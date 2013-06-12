@@ -4,7 +4,8 @@ set (CMAKE_BUILD_TYPE DEBUG)
 set (CMAKE_BINARY_DIR  $(CMAKE_SOURCE_DIR)/../build)
 set (CMAKE_CXX_COMPILER /usr/bin/clang++)
 
-
+message ("Source directory : " ${CMAKE_SOURCE_DIR})
+message ("Binary directory : " ${CMAKE_BINARY_DIR})
 
 find_package(PCL 1.7 REQUIRED)
 
@@ -16,11 +17,11 @@ if (boost_found)
 endif()
 
 
-include_directories (/Volumes/WORKSPACE/packages/ann_1.1.2/include /usr/local/include/opencv /Volumes/WORKSPACE/projects)
-include_directories(${PCL_INCLUDE_DIRS} /usr/local/include /Volumes/WORKSPACE/softwares/boost_1_53_0)
+include_directories (/usr/local/include/opencv /Volumes/WORKSPACE/projects)
+include_directories(${PCL_INCLUDE_DIRS} /usr/local/include )
 
-link_directories (/Volumes/WORKSPACE/packages/ann_1.1.2/lib /usr/local/lib/)
-link_directories(${PCL_LIBRARY_DIRS} /Volumes/WORKSPACE/softwares/boost_1_53_0/stage/lib)
+link_directories (/usr/local/lib/)
+link_directories(${PCL_LIBRARY_DIRS})
 
 add_definitions(${PCL_DEFINITIONS})
 

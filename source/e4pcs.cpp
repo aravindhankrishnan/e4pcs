@@ -6,6 +6,7 @@
 #include <boost/foreach.hpp>
 
 #include <iostream>
+#include <algorithm>
 #include <sstream>
 #include <limits>
 
@@ -55,6 +56,12 @@ bool Extended4PCS::align ()
   cout << "# entries in Point List table = " << pointListTable.size () << "\n\n";
 
   cout << "\n\n";
+
+
+  if (quadMatchTable.size () == 0) {
+    cout << "No quads found with the given parameters .. Stopping ..\n";
+    return false;
+  }
     
   cout << "<< QUAD TABLE >> \n-------------------------------------------------------\n";
   for (int i = 0; i < quadMatchTable.size (); i++) {
@@ -86,6 +93,15 @@ bool Extended4PCS::align ()
       << "Error is " << quadMatchTable[i].least_error << endl;
   }
 
+  // among matching quads, select the ones on a plane
+  // All quads in the source cloud are on a plane, so 
+  // enforcing the same constraint
+  filterMatchingQuads ();
+
+  findTransformationParameters ();
+
+  //return true;
+
   int color[3] = {255, 255, 255};
   displayPointCloud (source, color, (char *) "cloud1", vp1);
 
@@ -99,6 +115,11 @@ bool Extended4PCS::align ()
       case 1: g = 1; break;
       case 2: b = 1; break;
     }
+
+    if (quadMatchTable[i].ignoreMatch) {
+      continue;
+    }
+
     plotMatchingQuads (quadMatchTable[i], r, g, b);
   }
 
@@ -133,7 +154,214 @@ bool Extended4PCS::align ()
   //}
 }
 
+void Extended4PCS::findTransformationParameters ()
+{
+  double best_error = numeric_limits <double>::max ();
+  int index = -1;
 
+  for (int i = 0; i < quadMatchTable.size (); i++) {
+    QuadMatch& qmatch = quadMatchTable[i];
+
+    if (qmatch.ignoreMatch) {
+      continue;
+    }
+
+    if (qmatch.least_error < best_error) {
+      index = i;
+      best_error = qmatch.least_error;
+    }
+  }
+  
+  if (index == -1) {
+    cout << "Couln't find matching quads .. Stopping ..\n";
+    transform.setZero ();
+    transform.block <3, 3> (0, 0) = Eigen::Matrix3f::Identity ();
+    return;
+  }
+
+
+  cout << "\nChoosing quad " << index+1 << " for finding the "
+    "final transformation\n\n";
+
+  QuadMatch& qmatch = quadMatchTable[index];
+  CloudPtr cloud1 (new Cloud);
+  CloudPtr cloud2 (new Cloud);
+
+  Quad& q1 = *(qmatch.quad);
+  Quad& q2 = qmatch.matches[qmatch.best_match];
+
+  foreach (int& index, q1.q) {
+    cloud1->points.push_back (source->points[index]);
+  }
+  cloud1->width = 1;
+  cloud1->height = cloud1->points.size ();
+
+  foreach (int& index, q2.q) {
+    cloud2->points.push_back (target->points[index]);
+  }
+  cloud2->width = 1;
+  cloud2->height = cloud2->points.size ();
+
+  Eigen::Matrix3f R;
+  Eigen::Vector3f T;
+
+  estimateRigidBodyTransformation (cloud1, cloud2, R, T);
+
+  transform.block <3, 3> (0, 0) = R;
+  transform.block <3, 1> (0, 3) = T;
+
+  transform (3, 3) = 1.0;
+
+  cout << "\n---------- TRANSFORMATION ---------------\n"
+    << transform << "\n------------------------------------------\n\n";
+
+}
+
+void Extended4PCS::filterMatchingQuads ()
+{
+  vector <bool> flags (quadMatchTable.size ());
+  vector <int> plane_ids (quadMatchTable.size ());
+
+  int plane_id = 1;
+
+  for (int i = 0; i < quadMatchTable.size (); i++) {
+
+    bool plane_assigned = false;
+
+    if (flags[i]) {
+      continue;
+    }
+
+    for (int j = i; j < quadMatchTable.size (); j++) {
+
+      if (flags[j]) {
+        continue;
+      }
+
+      if (samePlaneCheck (quadMatchTable[i].matches[quadMatchTable[i].best_match],
+                          quadMatchTable[j].matches[quadMatchTable[j].best_match]) )
+      {
+        flags[i] = true;
+        flags[j] = true;
+        plane_ids[i] = plane_id;
+        plane_ids[j] = plane_id;
+        plane_assigned = true;
+      }
+    }
+
+    plane_id++;
+
+    if (!plane_assigned) {
+      plane_ids[i] = plane_id;
+    }
+  }
+
+  // contains count of quads on different planes
+  vector <int> plane_cnt;
+
+  cout << endl;
+
+  for (int i = 1; i < plane_id; i++) {
+    int c = count (plane_ids.begin (), plane_ids.end (), i);
+    cout << "# of points on plane " << i << " = " << c << endl;
+    plane_cnt.push_back (c);
+  }
+
+  // count of quads on the dominant plane (plane containing max quads)
+  int max_cnt = *(max_element (plane_cnt.begin (), plane_cnt.end ()));
+
+
+  // in case there are more planes that have same max_count,
+  // we maintain a list
+  vector <int> dominant_planes;
+  for (int i = 0; i < plane_cnt.size (); i++) {
+    if (plane_cnt[i] == max_cnt) {
+      dominant_planes.push_back (i+1);
+    }
+  }
+
+  cout << "\n# of dominant planes = " << dominant_planes.size () << "\n\n";
+
+  for (int i = 0; i < dominant_planes.size (); i++) {
+    cout << "# of quads in dominant plane " << i+1 << " is " 
+      << plane_cnt[dominant_planes[i]-1] << endl;
+  }
+
+  int dom_plane_id = dominant_planes[0];
+
+  for (int i = 0; i < plane_ids.size (); i++) {
+    if (plane_ids[i] != dom_plane_id) {
+      quadMatchTable[i].ignoreMatch  = true;
+    }
+  }
+
+}
+
+bool Extended4PCS::samePlaneCheck (Quad& one, Quad& two)
+{
+  Eigen::Vector3f centroid;
+  centroid.setZero ();
+
+  foreach (int& index, one.q) {
+    centroid += target->points[index].getVector3fMap ();
+  }
+
+  centroid /= 4.0;
+
+  Eigen::Matrix3f covariance;
+  covariance.setZero ();
+
+  foreach (int& index, one.q) {
+    Eigen::Vector3f V;
+    V.setZero ();
+    V = (target->points[index].getVector3fMap () - centroid) ;
+    covariance += (V * V.transpose ());
+  }
+
+  Eigen::EigenSolver <Eigen::Matrix3f> es (covariance);
+  //cout << "The eigen values are " << es.eigenvalues () << endl;
+  //cout << "\n\n\n" << endl;
+
+  Eigen::Vector3d eigenvalues;
+  eigenvalues.setZero ();
+  pcl::eigen33 (covariance, eigenvalues);
+  //cout << "The eigen values are " << eigenvalues.transpose () << endl << endl;
+
+  Eigen::Vector3f eigenvector1;
+  eigenvector1.setZero ();
+  pcl::computeCorrespondingEigenVector (covariance, eigenvalues [2], eigenvector1);
+
+  Eigen::Vector3f eigenvector2;
+  eigenvector2.setZero ();
+  pcl::computeCorrespondingEigenVector (covariance, eigenvalues [1], eigenvector2);
+
+  Eigen::Vector3f eigenvector3;
+  eigenvector3.setZero ();
+  pcl::computeCorrespondingEigenVector (covariance, eigenvalues [0], eigenvector3);
+
+  //cout << "Eigen values = " << eigenvalues[0] << " " << eigenvalues[1] << " " << eigenvalues[2] << endl;
+
+  float A = eigenvector3 (0);
+  float B = eigenvector3 (1);
+  float C = eigenvector3 (2);
+  float D = -(A * centroid (0) + B * centroid (1) + C * centroid (2));
+
+
+  foreach (int& index, two.q) {
+    float x = target->points[index].x;
+    float y = target->points[index].y;
+    float z = target->points[index].z;
+
+    float residue = fabs (A*x + B*y + C*z + D);
+    //cout << "Same plane check , residue = " << residue << endl;
+    if ( residue > param.plane_fit_threshold) {
+      //cout << "Residue check failed.. returning FALSE..\n";
+      return false;
+    }
+  }
+  
+  return true;
+}
 
 void Extended4PCS::getRotationFromCorrelation (Eigen::MatrixXf &cloud_src_demean,
                                        Eigen::Vector4f &centroid_src,
@@ -216,6 +444,11 @@ void Extended4PCS::estimateRigidBodyTransformation (CloudPtr src, CloudPtr tgt,
   R.setIdentity ();
   T.setZero ();
 
+  if (src->points.size () == 0 &&
+      tgt->points.size () == 0) {
+    return;
+  }
+
   estimateRotation (src, tgt, R);
   estimateTranslation (src, tgt, R, T);
 }
@@ -265,7 +498,6 @@ double Extended4PCS::estimateError (CloudPtr src, CloudPtr tgt,
 	vector<float> dist (K);
 
 	double error = 0.0;
-	double max_range = 5.0;
 	int count = 0;
 
 	for(int i = 0; i < src->points.size(); i++) {
@@ -279,7 +511,7 @@ double Extended4PCS::estimateError (CloudPtr src, CloudPtr tgt,
 			Point p2 = tgt->points[ids[0]];
 
 			double dist = (p1.getVector3fMap () - p2.getVector3fMap ()).norm ();
-			if(dist > max_range) {
+			if(dist > param.max_range) {
 				continue;
 			}
 			count++;
@@ -389,7 +621,6 @@ void Extended4PCS::displayPointCloud (CloudPtr cloud, int* color, char* name,
 
 void Extended4PCS::findSimilarQuads ()
 {
-  float similarity_threshold = 1.0;
   for (int i = 0; i < quadMatchTable.size (); i++) {
     QuadMatch& qmatch = quadMatchTable[i];
     
@@ -408,7 +639,7 @@ void Extended4PCS::findSimilarQuads ()
       Eigen::Vector3f a = target->points[r1_pts[i]].getVector3fMap ();
       Eigen::Vector3f b = target->points[r1_pts[i+1]].getVector3fMap ();
 
-      if ( ( (a-b).norm () - qmatch.ab_len)  > similarity_threshold){
+      if ( ( (a-b).norm () - qmatch.ab_len)  > param.length_similarity_threshold){
         //cout << "*** Point pairs NOT MATCHING AB length criteria ..\n";
       }
       else {
@@ -436,7 +667,7 @@ void Extended4PCS::findSimilarQuads ()
       Eigen::Vector3f a = target->points[r2_pts[i]].getVector3fMap ();
       Eigen::Vector3f b = target->points[r2_pts[i+1]].getVector3fMap ();
 
-      if ( ( (a-b).norm () - qmatch.cd_len)  > similarity_threshold){
+      if ( ( (a-b).norm () - qmatch.cd_len)  > param.length_similarity_threshold){
         //cout << "*** Point pairs NOT MATCHING CD length criteria ..\n";
       }
       else {
@@ -550,7 +781,7 @@ bool Extended4PCS::angleCheck (Quad& quad, Quad& mquad)
   float angle1 = atan2 (u1.cross (v1).norm (), u1.dot (v1)) * 180. / M_PI;
   float angle2 = atan2 (u2.cross (v2).norm (), u2.dot (v2)) * 180. / M_PI;
 
-  if (fabs (angle1 - angle2) < 2.0){
+  if (fabs (angle1 - angle2) < param.angle_threshold){
     return true;
   }
 
@@ -564,7 +795,7 @@ int Extended4PCS::findMatchingPoint (KdTree& kdtree, Point pt)
   vector <float> dist (K);
 
   if (kdtree.nearestKSearch (pt, K, ids, dist) > 0) {
-    if (dist[0] <= 1.0) {
+    if (dist[0] <= param.e_match_threshold) {
       //cout << "dist = " << dist[0] << endl;
       return ids[0];
     }
@@ -578,13 +809,13 @@ void Extended4PCS::insertToQuadMatchTable (float length, int p, int q)
   for (int i = 0; i < quadMatchTable.size (); i++) {
     QuadMatch& qmatch = quadMatchTable[i];
     //length within 1 meter of the pair in the quad
-    if ( fabs (qmatch.ab_len - length) < 1.) {
+    if ( fabs (qmatch.ab_len - length) < param.length_similarity_threshold) {
       qmatch.r1_pts->push_back (p);
       qmatch.r1_pts->push_back (q);
       break;
     }
     //length within 1 meter of pair in the quad
-    if ( fabs (qmatch.cd_len - length) < 1.) {
+    if ( fabs (qmatch.cd_len - length) < param.length_similarity_threshold) {
       qmatch.r2_pts->push_back (p);
       qmatch.r2_pts->push_back (q);
       break;
@@ -612,7 +843,8 @@ void Extended4PCS::initializeQuadMatchTable ()
     vector <PointList>::iterator itr = pointListTable.begin ();
     for (; itr != pointListTable.end (); itr++) {
       // point within 1 m
-      if ( fabs (itr->len - quadMatchTable[i].ab_len) < 1.) {
+      if ( fabs (itr->len - quadMatchTable[i].ab_len) < 
+          param.length_similarity_threshold) {
         found = true;
         break;
       }
@@ -627,7 +859,8 @@ void Extended4PCS::initializeQuadMatchTable ()
     found = false;
     itr = pointListTable.begin ();
     for (; itr != pointListTable.end (); itr++) {
-      if ( fabs (itr->len - quadMatchTable[i].cd_len) < 1.) {
+      if ( fabs (itr->len - quadMatchTable[i].cd_len) < 
+          param.length_similarity_threshold) {
         found = true;
         break;
       }
@@ -644,10 +877,12 @@ void Extended4PCS::initializeQuadMatchTable ()
     vector <PointList>::iterator itr = pointListTable.begin ();
     for (; itr != pointListTable.end (); itr++) {
       // point within 1 m
-      if ( fabs (itr->len - quadMatchTable[i].ab_len) < 1.) {
+      if ( fabs (itr->len - quadMatchTable[i].ab_len) < 
+          param.length_similarity_threshold) {
         quadMatchTable[i].r1_pts = &(itr->points);
       }
-      if ( fabs (itr->len - quadMatchTable[i].cd_len) < 1.) {
+      if ( fabs (itr->len - quadMatchTable[i].cd_len) < 
+          param.length_similarity_threshold) {
         quadMatchTable[i].r2_pts = &(itr->points);
       }
     }
@@ -670,7 +905,7 @@ void Extended4PCS::selectOneQuad (Quad& quad, vector <int>& plane_pts)
     for (int p = 0; p < z; p++) {
       Point p1 = source->points[plane_pts[k]];
       Point p2 = source->points[quad.q[p]];
-      if ( (p1.getVector3fMap () - p2.getVector3fMap ()).norm () < min_dist) {
+      if ( (p1.getVector3fMap () - p2.getVector3fMap ()).norm () < param.min_dist) {
         too_close = true;
         break;
       }
@@ -754,7 +989,7 @@ bool Extended4PCS::checkQuad (Quad& quad)
   quad.r1 = r1;
   quad.r2 = r2;
 
-  cout << "r1 = " << r1 << " r2 = " << r2 << endl;
+  //cout << "r1 = " << r1 << " r2 = " << r2 << endl;
 
   //static int lineid = 5000;
   //ostringstream ostr;
@@ -776,7 +1011,23 @@ bool Extended4PCS::checkQuad (Quad& quad)
 void Extended4PCS::selectQuads (vector <int>& plane_pts, int N)
 {
   int quadId = 1;
-  for (int i = 0; i < N; i++) { // Select N quads
+
+  Quad quad;
+  // Make sure that atleast one quad gets selected ..
+  do {
+    selectOneQuad (quad, plane_pts);
+    if (checkQuad (quad)) {
+      quad.quadId = quadId++;
+      quads.push_back (quad);
+      break;
+    }
+    //cout << "Quad check failed ..\n";
+  } while (true);
+
+  cout << "\n<< Selected quad 1 >> ..\n";
+  // Select the rest N-1 quads
+  for (int i = 2; i <= N; i++) { // Select N quads
+
     Quad quad;
 
     int tries = 1;
@@ -787,14 +1038,16 @@ void Extended4PCS::selectQuads (vector <int>& plane_pts, int N)
         quads.push_back (quad);
         break;
       }
+      //cout << "Quad check failed ..\n";
     } while (tries++ < 10);
 
-    if (tries == 11) {
-      cout << "<< Could not select quad " << i+1 << " tries = " << tries << " >>\n";
-    }
-    else {
-      cout << "<< Number of tries to select quad " << i+1 << " = " << tries << " >>\n";
-    }
+    //if (tries == 11) {
+    //  cout << "<< Could not select quad " << i << " tries = " << tries << " >>\n";
+    //}
+    //else {
+      //cout << "<< Selected quad " << i << " Number of tries  = " << tries << " >> .. \n";
+      cout << "<< Selected quad " << i << " >> .. \n";
+    //}
 
     //cout << "\nPairwise distances\n-----------------\n";
     //for (int i = 0; i < 4; i++) {
@@ -821,11 +1074,13 @@ void Extended4PCS::selectPlane ()
 
   srand (time (NULL));
 
-  while (z++ < random_tries) {
+  cout << "FINDING THE BEST PLANE :: ";
+  while (z++ < param.random_tries) {
     int ta = 0, tb = 0, tc = 0;
     select3Points (source, ta, tb, tc);
     vector <int> pts;
     findPointsOnPlane (source, ta, tb, tc, pts);
+    cout << pts.size () << " ";
 
     if (pts.size () > max_pts) {
       max_pts = pts.size ();
@@ -833,6 +1088,7 @@ void Extended4PCS::selectPlane ()
     }
     //cout << "z = " << z << " max points = " << max_pts << endl;
   }
+  cout << endl;
 
   findPointsOnPlane (source, a, b, c, plane_pts);
   cout << "# of points on the plane = " << plane_pts.size () << endl;
@@ -911,7 +1167,7 @@ void Extended4PCS::findPointsOnPlane (CloudPtr cloud, int a, int b,
       float z = cloud->points[i].z;
 
       float residue = fabs (A*x + B*y + C*z + D);
-      if ( residue < 0.01) {
+      if ( residue < param.plane_fit_threshold) {
         pts.push_back (i);
         //cout << "residue = " << residue << endl;
       }
@@ -938,9 +1194,9 @@ void Extended4PCS::select3Points (CloudPtr cloud, int& a, int& b, int& c)
   Eigen::Vector3f v = pa.getVector3fMap () - pc.getVector3fMap ();
 
   if (0.5 * u.cross (v).norm () // area of the traingle formed by
-      // the 3 points should not be zero
-      && (u.norm () > min_dist) // minimum distance between selected points
-      && (v.norm () > min_dist) ) {
+      // the 3 points should not be zero, this is a check for collinearity
+      && (u.norm () > param.min_dist) // minimum distance between selected points
+      && (v.norm () > param.min_dist) ) {
     return;
   }
 }

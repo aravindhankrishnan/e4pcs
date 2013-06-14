@@ -54,10 +54,23 @@ struct QuadMatch
   QuadMatch ()
   {
     best_match = -1;
+    ignoreMatch = false;
   }
 
   int best_match;
+  bool ignoreMatch; // based on lying on the dominant plane criteria
   double least_error;
+};
+
+struct Params
+{
+  int random_tries;
+  float min_dist;
+  float length_similarity_threshold;
+  float max_range;
+  float e_match_threshold;
+  float plane_fit_threshold;
+  float angle_threshold;
 };
 
 class Extended4PCS
@@ -69,8 +82,20 @@ class Extended4PCS
 
     Extended4PCS ()
     {
-      random_tries = 1000;
-      min_dist = 8.0; // minimum of 'min_dist' meter distance between selected points.
+      param.random_tries = 100; // for selecting the plane containing max points
+
+      param.min_dist = 1; // ensures min dist between |ab|, |ac|, |ad|, |bc|, |bd|, |cd| so that a, b, c & d are not too close
+
+      param.length_similarity_threshold = 1; // segment length difference while finding matching quads
+
+      param.max_range = 0.5; // maximum threshold for correspondence, used in estimateError ()
+
+      param.e_match_threshold = 1; // matching intersection threshold i.e (e1 - e2)
+
+      param.plane_fit_threshold = 0.1; // threshold to find points on the plane
+
+      param.angle_threshold = 2.0; // angle threshold at quad intersections
+
       vp1 = 1;
       vp2 = 2;
     }
@@ -94,6 +119,8 @@ class Extended4PCS
     double getRMS () const { return rms; }
 
     bool align ();
+
+    void getTransformation (Eigen::Matrix4f& mat) { mat = transform; }
 
     void selectPlane ();
 
@@ -150,6 +177,7 @@ class Extended4PCS
     void demeanPointCloud (CloudPtr &in, Eigen::Vector4f& centroid,
                                  Eigen::MatrixXf &out);
 
+    void filterMatchingQuads ();
 
     void getRotationFromCorrelation (Eigen::MatrixXf &cloud_src_demean,
                                  Eigen::Vector4f &centroid_src,
@@ -157,7 +185,10 @@ class Extended4PCS
                                  Eigen::Vector4f &centroid_tgt,
                                  Eigen::Matrix3f &transformation_matrix);
 
-    int random_tries;
+    bool samePlaneCheck (Quad& one, Quad& two);
+
+    void findTransformationParameters ();
+
     int num_quads;
     double min_dist; // minimum distance between points for plane selection
     int vp1;
@@ -172,9 +203,16 @@ class Extended4PCS
     vector <QuadMatch> quadMatchTable;
     vector <PointList> pointListTable;
 
+    Params param;
+
     double rms;
 
+    Eigen::Matrix4f transform;
+
     PCLVisualizer* viz;
+
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
 };
 
 

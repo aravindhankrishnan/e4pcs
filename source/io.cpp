@@ -4,6 +4,16 @@
 #include <fstream>
 using namespace std;
 
+#include <pcl/io/pcd_io.h>
+#include <pcl/filters/filter.h>
+
+void readPCDBinaryFile (char* filename, CloudPtr cloud)
+{
+  pcl::io::loadPCDFile (filename, *cloud);
+  vector <int> ids;
+  pcl::removeNaNFromPointCloud (*cloud, *cloud, ids);
+}
+
 void readASCIIFile (char* filename, CloudPtr cloud)
 {
   ifstream ifile (filename);

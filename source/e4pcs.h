@@ -190,7 +190,7 @@ class Extended4PCS
     void findTransformationParameters ();
 
     int num_quads;
-    double min_dist; // minimum distance between points for plane selection
+
     int vp1;
     int vp2;
 

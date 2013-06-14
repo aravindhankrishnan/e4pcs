@@ -122,13 +122,12 @@ class Extended4PCS
 
     void getTransformation (Eigen::Matrix4f& mat) { mat = transform; }
 
-    void selectPlane ();
-
-
 
   private:
 
     void select3Points (CloudPtr cloud, int& a, int& b, int& c);
+
+    void selectPlane ();
 
     void findPointsOnPlane (CloudPtr cloud, int a, int b,
                         int c, vector <int>& pts);

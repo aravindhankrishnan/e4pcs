@@ -330,6 +330,9 @@ bool Extended4PCS::filterMatchingQuads ()
     }
   }
 
+  if (plane_cnt.size () == 1) {
+    return true;
+  }
   cout << "plane_cnt.size () = " << plane_cnt.size () << endl;
   vector <int> tmp;
   foreach (int& i, plane_cnt) {

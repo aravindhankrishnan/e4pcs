@@ -9,5 +9,5 @@ using namespace E4PCS;
 
 void readPCDBinaryFile (char* filename, CloudPtr cloud);
 
-void readASCIIFile (char* filename, CloudPtr cloud);
-void writeASCIIFile (char* filename, CloudPtr cloud);
+void readASCIIFile (const char* filename, CloudPtr cloud);
+void writeASCIIFile (const char* filename, CloudPtr cloud);

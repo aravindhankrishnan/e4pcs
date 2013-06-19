@@ -14,7 +14,7 @@ void readPCDBinaryFile (char* filename, CloudPtr cloud)
   pcl::removeNaNFromPointCloud (*cloud, *cloud, ids);
 }
 
-void readASCIIFile (char* filename, CloudPtr cloud)
+void readASCIIFile (const char* filename, CloudPtr cloud)
 {
   ifstream ifile (filename);
 
@@ -42,7 +42,7 @@ void readASCIIFile (char* filename, CloudPtr cloud)
   cloud->width = 1;
 }
 
-void writeASCIIFile (char* filename, CloudPtr cloud)
+void writeASCIIFile (const char* filename, CloudPtr cloud)
 {
   ofstream ofile (filename);
   for (int i = 0; i < cloud->points.size (); i++) {

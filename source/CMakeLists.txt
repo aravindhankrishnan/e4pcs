@@ -32,7 +32,13 @@ MESSAGE("PCL Definitions - ${PCL_DEFINITIONS}")
 
 
 add_executable (test_e4pcs test_e4pcs.cpp e4pcs.cpp io.cpp e4pcs.h typedefs.h io.h)
+add_executable (downsample downsample.cpp io.cpp io.h)
 add_executable (visualize_output visualize_output.cpp io.cpp typedefs.h io.h)
+add_executable (generate_transformation_matrix generate_transformation_matrix.cpp)
+add_executable (transform_cloud transform_cloud.cpp io.cpp typedefs.h io.h)
 
 target_link_libraries (test_e4pcs ${PCL_LIBRARIES})
+target_link_libraries (downsample ${PCL_LIBRARIES})
 target_link_libraries (visualize_output ${PCL_LIBRARIES})
+target_link_libraries (generate_transformation_matrix ${PCL_LIBRARIES})
+target_link_libraries (transform_cloud ${PCL_LIBRARIES})

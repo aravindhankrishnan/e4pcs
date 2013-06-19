@@ -103,7 +103,7 @@ int main (int argc, char *argv[])
   //p->setBackgroundColor (25./255, 25.0/255, 25.0/255);
   //p->setBackgroundColor (255, 255, 255, vp2);
 
-  float D = 5.0;
+  float D = 4.0;
   float sd = D / 6.; // the point can lie in a 'D/2' m radius. so 6 sigma = D.
   addGaussianNoise (cloud2, sd);
 

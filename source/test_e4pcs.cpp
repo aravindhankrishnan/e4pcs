@@ -8,6 +8,8 @@ using namespace std;
 #include "typedefs.h"
 
 #include <boost/foreach.hpp>
+#include <boost/random.hpp>
+#include <boost/random/normal_distribution.hpp>
 
 #include <pcl/visualization/pcl_visualizer.h>
 using namespace pcl::visualization;
@@ -37,6 +39,28 @@ void displayPointCloud (PCLVisualizer* viz, CloudPtr cloud, int* color,
   PointCloudColorHandlerCustom <Point> tgt_h (cloud, color[0], color[1], color[2]);
   viz->addPointCloud (cloud, tgt_h, name, viewport);
 }
+
+
+void addGaussianNoise (CloudPtr cloud, float sd)
+{
+  using namespace boost;
+  mt19937 rng (time (0));
+  normal_distribution<> nd (0.0, sd);
+
+  variate_generator <mt19937&, normal_distribution<> > noise (rng, nd);
+
+
+  BOOST_FOREACH (Point& pt, cloud->points) {
+    float nx = noise ();
+    float ny = noise ();
+    float nz = noise ();
+
+    pt.x += nx;
+    pt.y += ny;
+    pt.z += nz;
+  }
+}
+
 
 int main (int argc, char *argv[])
 {
@@ -79,6 +103,10 @@ int main (int argc, char *argv[])
   //p->setBackgroundColor (25./255, 25.0/255, 25.0/255);
   //p->setBackgroundColor (255, 255, 255, vp2);
 
+  float D = 5.0;
+  float sd = D / 6.; // the point can lie in a 'D/2' m radius. so 6 sigma = D.
+  addGaussianNoise (cloud2, sd);
+
   CloudPtr sampledcloud1 (new Cloud);
   CloudPtr sampledcloud2 (new Cloud);
 
@@ -87,7 +115,7 @@ int main (int argc, char *argv[])
   sampleCloud (cloud2, numPoints, sampledcloud2);
 
 
-  Extended4PCS e4pcs;
+  Extended4PCS e4pcs (D);
   e4pcs.setSource (sampledcloud1);
   e4pcs.setTarget (sampledcloud2);
   e4pcs.setVisualizer (p);

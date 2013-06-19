@@ -6,6 +6,7 @@
 #include <boost/foreach.hpp>
 
 #include <iostream>
+#include <functional>
 #include <algorithm>
 #include <sstream>
 #include <limits>
@@ -20,7 +21,7 @@ extern float sphere_radius;
 namespace E4PCS {
 
 
-bool Extended4PCS::align ()
+void Extended4PCS::align ()
 {
   selectPlane ();
 
@@ -60,7 +61,7 @@ bool Extended4PCS::align ()
 
   if (quadMatchTable.size () == 0) {
     cout << "No quads found with the given parameters .. Stopping ..\n";
-    return false;
+    return;
   }
     
   cout << "<< QUAD TABLE >> \n-------------------------------------------------------\n";
@@ -83,20 +84,34 @@ bool Extended4PCS::align ()
   for (int i = 0; i < quadMatchTable.size (); i++) {
     QuadMatch& qmatch = quadMatchTable[i];
     findBestQuadMatch (qmatch);
-    cout << "Found best match for Quad " << i+1 << "\n";
+  //  cout << "Found best match for Quad " << i+1 << "\n";
   }
 
   for (int i = 0; i < quadMatchTable.size (); i++) {
-    cout << "Match for quad " << i+1 << " is " 
-      << quadMatchTable[i].best_match + 1 << " of "
-      << quadMatchTable[i].matches.size () << "\t"
-      << "Error is " << quadMatchTable[i].least_error << endl;
+    if (quadMatchTable[i].best_match != -1) {
+      cout << "Best match for quad " << i+1 << " is " 
+        << quadMatchTable[i].best_match + 1 << " of "
+        << quadMatchTable[i].matches.size () << "\t"
+        << "Error is " << quadMatchTable[i].least_error << endl;
+      continue;
+    }
+
+    quadMatchTable[i].ignoreMatch = true;
+    cout << "Match for quad " << i+1 << " NOT FOUND\n";
   }
+
+  cout << endl;
 
   // among matching quads, select the ones on a plane
   // All quads in the source cloud are on a plane, so 
   // enforcing the same constraint
-  filterMatchingQuads ();
+  if ( !filterMatchingQuads () ) {
+    cout << "\n\n\n";
+    cout << "**************** Selecting a NEW PLANE *****************\n\n";
+    cleanup ();
+    align ();
+    return;
+  }
 
   findTransformationParameters ();
 
@@ -116,6 +131,7 @@ bool Extended4PCS::align ()
       case 2: b = 1; break;
     }
 
+    // only plot quads on the dominant plane
     if (quadMatchTable[i].ignoreMatch) {
       continue;
     }
@@ -123,35 +139,37 @@ bool Extended4PCS::align ()
     plotMatchingQuads (quadMatchTable[i], r, g, b);
   }
 
+  for (int i = 0; i < quadMatchTable.size (); i++) {
+    Quad& quad = *(quadMatchTable[i].quad);
+    if (quadMatchTable[i].ignoreMatch) {
+      continue;
+    }
+
+    Quad& mquad = quadMatchTable[i].matches[quadMatchTable[i].best_match];
+
+    //cout << "Angle between (" << source->points[quad.q[0]] << "," << quad.intersection.transpose ()
+    //  << ") and (" << quad.intersection.transpose () << "," << source->points[quad.q[3]] << ") is "
+    //  << quad.intersect_angle << endl;
 
 
-  //for (int i = 0; i < 1 /*quadMatchTable.size () */; i++) {
-  //  QuadMatch& qmatch = quadMatchTable[i];
+    //cout << "Angle between (" << target->points[mquad.q[0]] << "," << mquad.intersection.transpose ()
+    //  << ") and (" << mquad.intersection.transpose () << "," << target->points[mquad.q[3]] << ") is "
+    //  << mquad.intersect_angle << endl;
+  }
 
-  //  cout << "( ";
-  //  for (int y = 0; y < 4; y++) {
-  //    for (int z = y+1; z < 4; z++) {
-  //      cout << (source->points[qmatch.quad->q[y]].getVector3fMap () - 
-  //          source->points[qmatch.quad->q[z]].getVector3fMap ()).norm () << " ";
-  //    }
-  //  }
-  //  cout << ") ----> \n";
+}
 
+void Extended4PCS::cleanup ()
+{
+  plane_pts.clear ();
+  quads.clear ();
+  pointListTable.clear ();
 
-  //  cout << "{ ";
-  //  for (int k = 0; k < qmatch.matches.size (); k++) {
-  //    Quad& quad = qmatch.matches[k];
-  //    cout << "( ";
-  //    for (int y = 0; y < 4; y++) {
-  //      for (int z = y+1; z < 4; z++) {
-  //        cout << (target->points[quad.q[y]].getVector3fMap () - 
-  //            target->points[quad.q[z]].getVector3fMap ()).norm () << " ";
-  //      }
-  //    }
-  //    cout << ") ";
-  //  }
-  //  cout << " } \n\n\n";
-  //}
+  foreach (QuadMatch& qm, quadMatchTable) {
+    qm.quad = NULL;
+  }
+
+  quadMatchTable.clear ();
 }
 
 void Extended4PCS::findTransformationParameters ()
@@ -217,7 +235,7 @@ void Extended4PCS::findTransformationParameters ()
 
 }
 
-void Extended4PCS::filterMatchingQuads ()
+bool Extended4PCS::filterMatchingQuads ()
 {
   vector <bool> flags (quadMatchTable.size ());
   vector <int> plane_ids (quadMatchTable.size ());
@@ -228,7 +246,13 @@ void Extended4PCS::filterMatchingQuads ()
 
     bool plane_assigned = false;
 
-    if (flags[i]) {
+    if (flags[i]) { 
+      continue;
+    }
+
+    if (quadMatchTable[i].ignoreMatch) {
+      //cout << "\n\nSame plane check : Quad " << i+1 << " and Quad " << j+1 << " ";
+      cout << "\n\nSkipping Quad " << i+1 << " due to ignoreMatch\n";
       continue;
     }
 
@@ -238,7 +262,17 @@ void Extended4PCS::filterMatchingQuads ()
         continue;
       }
 
-      if (samePlaneCheck (quadMatchTable[i].matches[quadMatchTable[i].best_match],
+
+    if (quadMatchTable[j].ignoreMatch) {
+      cout << "\n\nSame plane check : Quad " << i+1 << " and Quad " << j+1 << " ";
+      cout << "Skipping Quad " << j+1 << " due to ignoreMatch\n";
+      continue;
+    }
+
+
+      cout << "\n\nSame plane check : Quad " << i+1 << " and Quad " << j+1 << endl;
+        
+      if ( samePlaneCheck (quadMatchTable[i].matches[quadMatchTable[i].best_match],
                           quadMatchTable[j].matches[quadMatchTable[j].best_match]) )
       {
         flags[i] = true;
@@ -289,12 +323,36 @@ void Extended4PCS::filterMatchingQuads ()
 
   int dom_plane_id = dominant_planes[0];
 
+
   for (int i = 0; i < plane_ids.size (); i++) {
     if (plane_ids[i] != dom_plane_id) {
       quadMatchTable[i].ignoreMatch  = true;
     }
   }
 
+  cout << "plane_cnt.size () = " << plane_cnt.size () << endl;
+  vector <int> tmp;
+  foreach (int& i, plane_cnt) {
+    tmp.push_back (i);
+  }
+
+  sort (tmp.begin (), tmp.end (), greater <int> ());
+
+  int max_cnt1 = tmp[0];
+  int max_cnt2 = tmp[1];
+
+  cout << " :: max cnt 1 = " << max_cnt1 << ", max_cnt2 = " << max_cnt2;
+  cout << " ::  CONDITION " << (max_cnt1 - max_cnt2)  << " >= " << max_cnt1/2 << endl;
+
+  if ( (max_cnt1 - max_cnt2) <= 2 ) {
+    return false;
+  }
+
+  if ( (max_cnt1 - max_cnt2) >= (max_cnt1/2) ) {
+    return true;
+  }
+
+  return false;
 }
 
 bool Extended4PCS::samePlaneCheck (Quad& one, Quad& two)
@@ -306,12 +364,23 @@ bool Extended4PCS::samePlaneCheck (Quad& one, Quad& two)
     centroid += target->points[index].getVector3fMap ();
   }
 
-  centroid /= 4.0;
+  foreach (int& index, two.q) {
+    centroid += target->points[index].getVector3fMap ();
+  }
+
+  centroid /= 8.0; // two quads contain 8 points
 
   Eigen::Matrix3f covariance;
   covariance.setZero ();
 
   foreach (int& index, one.q) {
+    Eigen::Vector3f V;
+    V.setZero ();
+    V = (target->points[index].getVector3fMap () - centroid) ;
+    covariance += (V * V.transpose ());
+  }
+
+  foreach (int& index, two.q) {
     Eigen::Vector3f V;
     V.setZero ();
     V = (target->points[index].getVector3fMap () - centroid) ;
@@ -347,6 +416,20 @@ bool Extended4PCS::samePlaneCheck (Quad& one, Quad& two)
   float D = -(A * centroid (0) + B * centroid (1) + C * centroid (2));
 
 
+
+  foreach (int& index, one.q) {
+    float x = target->points[index].x;
+    float y = target->points[index].y;
+    float z = target->points[index].z;
+
+    float residue = fabs (A*x + B*y + C*z + D);
+    //cout << "Same plane check , residue = " << residue << endl;
+    if ( residue > param.plane_fit_threshold ) {
+      //cout << "Residue check failed.. returning FALSE..\n";
+      return false;
+    }
+  }
+
   foreach (int& index, two.q) {
     float x = target->points[index].x;
     float y = target->points[index].y;
@@ -354,7 +437,7 @@ bool Extended4PCS::samePlaneCheck (Quad& one, Quad& two)
 
     float residue = fabs (A*x + B*y + C*z + D);
     //cout << "Same plane check , residue = " << residue << endl;
-    if ( residue > param.plane_fit_threshold) {
+    if ( residue > param.plane_fit_threshold ) {
       //cout << "Residue check failed.. returning FALSE..\n";
       return false;
     }
@@ -485,6 +568,16 @@ void Extended4PCS::findBestQuadMatch (QuadMatch& qmatch)
       qmatch.best_match = i;
       qmatch.least_error = rms_best;
     }
+
+    //int cnt_best  = 0;
+    //int cnt_cur = 0;
+
+    //if ( (cnt_cur = estimateError (source, target, R, T) ) > cnt_best ) {
+    //  cnt_best = cnt_cur;
+    //  qmatch.best_match = i;
+    //  qmatch.cnt_best = cnt_best;
+    //}
+
   }
 }
 
@@ -761,25 +854,31 @@ bool Extended4PCS::angleCheck (Quad& quad, Quad& mquad)
 {
 
   Eigen::Vector3f a1 = source->points[quad.q[0]].getVector3fMap ();
-  Eigen::Vector3f b1 = source->points[quad.q[1]].getVector3fMap ();
+  Eigen::Vector3f c1 = source->points[quad.q[2]].getVector3fMap ();
   Point e1_pt;
   findIntersection (source, quad.q[0], quad.q[1], quad.q[2], quad.q[3], e1_pt);
   Eigen::Vector3f e1 = e1_pt.getVector3fMap ();
+  quad.intersection = e1;
 
   Eigen::Vector3f u1 = (a1-e1);
-  Eigen::Vector3f v1 = (b1-e1);
+  Eigen::Vector3f v1 = (c1-e1);
 
   Eigen::Vector3f a2 = target->points[mquad.q[0]].getVector3fMap ();
-  Eigen::Vector3f b2 = target->points[mquad.q[1]].getVector3fMap ();
+  Eigen::Vector3f c2 = target->points[mquad.q[2]].getVector3fMap ();
   Point e2_pt;
   findIntersection (target, mquad.q[0], mquad.q[1], mquad.q[2], mquad.q[3], e2_pt);
   Eigen::Vector3f e2 = e2_pt.getVector3fMap ();
+  mquad.intersection = e2;
 
   Eigen::Vector3f u2 = (a2-e2);
-  Eigen::Vector3f v2 = (b2-e2);
+  Eigen::Vector3f v2 = (c2-e2);
 
   float angle1 = atan2 (u1.cross (v1).norm (), u1.dot (v1)) * 180. / M_PI;
   float angle2 = atan2 (u2.cross (v2).norm (), u2.dot (v2)) * 180. / M_PI;
+
+  quad.intersect_angle = angle1;
+  mquad.intersect_angle = angle2;
+
 
   if (fabs (angle1 - angle2) < param.angle_threshold){
     return true;

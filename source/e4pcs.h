@@ -21,6 +21,10 @@ struct Quad
   float r1;
   float r2;
   int quadId;
+  Eigen::Vector3f intersection;
+  float intersect_angle;
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
 struct PointList
@@ -57,9 +61,13 @@ struct QuadMatch
     ignoreMatch = false;
   }
 
-  int best_match;
-  bool ignoreMatch; // based on lying on the dominant plane criteria
+  int best_match;   // RMS error is computed for transformation between quad and matches[i]
+                    // Set to -1 when every RMS error is above a particular threshold
+
+  bool ignoreMatch; // Set when the quad is not on the dominant plane
+
   double least_error;
+  int cnt_best;
 };
 
 struct Params
@@ -73,6 +81,7 @@ struct Params
   float angle_threshold;
 };
 
+
 class Extended4PCS
 {
   protected:
@@ -80,21 +89,28 @@ class Extended4PCS
 
   public:
 
-    Extended4PCS ()
+    Extended4PCS (float D)
     {
-      param.random_tries = 100; // for selecting the plane containing max points
+      param.random_tries = 1000; // for selecting the plane containing max points
 
-      param.min_dist = 1; // ensures min dist between |ab|, |ac|, |ad|, |bc|, |bd|, |cd| so that a, b, c & d are not too close
-
-      param.length_similarity_threshold = 1; // segment length difference while finding matching quads
-
-      param.max_range = 0.5; // maximum threshold for correspondence, used in estimateError ()
-
-      param.e_match_threshold = 1; // matching intersection threshold i.e (e1 - e2)
-
-      param.plane_fit_threshold = 0.1; // threshold to find points on the plane
-
+      // this parameter is constant
       param.angle_threshold = 2.0; // angle threshold at quad intersections
+
+      // change this depending on the span of your dataset
+      param.min_dist = 2; // ensures min dist between |ab|, |ac|, |ad|, |bc|, |bd|, |cd| so that a, b, c & d are not too close
+
+      // change this depending on the span of your dataset
+      param.max_range = 5.0; // maximum threshold for correspondence, used in estimateError ()
+
+      // this depends on the standard deviation of error
+      param.length_similarity_threshold = D; // segment length difference while finding matching quads
+
+      // this depends on the standard deviation of error
+      param.e_match_threshold = D/2; // matching intersection threshold i.e (e1 - e2)
+
+      // this depends on the standard deviation of error
+      param.plane_fit_threshold = D*2; // threshold to find points on the plane
+
 
       vp1 = 1;
       vp2 = 2;
@@ -118,7 +134,7 @@ class Extended4PCS
 
     double getRMS () const { return rms; }
 
-    bool align ();
+    void align ();
 
     void getTransformation (Eigen::Matrix4f& mat) { mat = transform; }
 
@@ -176,7 +192,7 @@ class Extended4PCS
     void demeanPointCloud (CloudPtr &in, Eigen::Vector4f& centroid,
                                  Eigen::MatrixXf &out);
 
-    void filterMatchingQuads ();
+    bool filterMatchingQuads ();
 
     void getRotationFromCorrelation (Eigen::MatrixXf &cloud_src_demean,
                                  Eigen::Vector4f &centroid_src,
@@ -187,6 +203,8 @@ class Extended4PCS
     bool samePlaneCheck (Quad& one, Quad& two);
 
     void findTransformationParameters ();
+
+    void cleanup ();
 
     int num_quads;
 

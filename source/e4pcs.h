@@ -89,18 +89,24 @@ class Extended4PCS
 
   public:
 
-    Extended4PCS (float D)
+    Extended4PCS (float D, float min_dist, float corr_max_range)
     {
+      float offset = 1;
+
+      if (fabs (D) < 1e-2) {
+        D += offset;
+      }
+
       param.random_tries = 1000; // for selecting the plane containing max points
 
       // this parameter is constant
       param.angle_threshold = 2.0; // angle threshold at quad intersections
 
       // change this depending on the span of your dataset
-      param.min_dist = 2; // ensures min dist between |ab|, |ac|, |ad|, |bc|, |bd|, |cd| so that a, b, c & d are not too close
+      param.min_dist = min_dist; // ensures min dist between |ab|, |ac|, |ad|, |bc|, |bd|, |cd| so that a, b, c & d are not too close
 
       // change this depending on the span of your dataset
-      param.max_range = 5.0; // maximum threshold for correspondence, used in estimateError ()
+      param.max_range = corr_max_range; // maximum threshold for correspondence, used in estimateError ()
 
       // this depends on the standard deviation of error
       param.length_similarity_threshold = D; // segment length difference while finding matching quads
@@ -143,7 +149,7 @@ class Extended4PCS
 
     void select3Points (CloudPtr cloud, int& a, int& b, int& c);
 
-    void selectPlane ();
+    void selectMaxPlane ();
 
     void findPointsOnPlane (CloudPtr cloud, int a, int b,
                         int c, vector <int>& pts);

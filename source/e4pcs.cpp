@@ -23,7 +23,7 @@ namespace E4PCS {
 
 void Extended4PCS::align ()
 {
-  selectPlane ();
+  selectMaxPlane ();
 
   int N = num_quads;
   selectQuads (plane_pts, N);
@@ -1166,7 +1166,7 @@ void Extended4PCS::selectQuads (vector <int>& plane_pts, int N)
     }
 }
 
-void Extended4PCS::selectPlane ()
+void Extended4PCS::selectMaxPlane ()
 {
   int a = -1, b = -1, c = -1;
 

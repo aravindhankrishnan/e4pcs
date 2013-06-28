@@ -7,7 +7,7 @@ using namespace std;
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/filter.h>
 
-void readPCDBinaryFile (char* filename, CloudPtr cloud)
+void readPCDBinaryFile (const char* filename, CloudPtr cloud)
 {
   pcl::io::loadPCDFile (filename, *cloud);
   vector <int> ids;
@@ -40,6 +40,7 @@ void readASCIIFile (const char* filename, CloudPtr cloud)
   }
   cloud->height = n;
   cloud->width = 1;
+  cout << "Loaded " << filename << " with " << cloud->height << " points ..\n";
 }
 
 void writeASCIIFile (const char* filename, CloudPtr cloud)

@@ -14,7 +14,10 @@ string inputfile, matfile, outputfile;
 int main (int argc, char * argv[]) 
 {
   if (argc < 4) {
-    cout << "Enter all arguments ..\n";
+    cout << "\nEnter\n"
+            "\t1) Input cloud\n"
+            "\t2) transformation file\n"
+            "\t3) output file name\n\n";
     return -1;
   }
 

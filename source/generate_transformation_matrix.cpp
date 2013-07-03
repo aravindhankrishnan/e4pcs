@@ -105,6 +105,7 @@ int main (int argc, char *argv[])
 
   ofstream ofile (outputfile.c_str ());
   ofile << transformation << endl;
+  cout << transformation << endl;
   ofile.close ();
 
   return 0;

@@ -2,6 +2,7 @@
 #include <utils/timer.h>
 
 #include <pcl/features/normal_3d.h>
+#include <pcl/keypoints/uniform_sampling.h>
 
 #include <boost/foreach.hpp>
 
@@ -74,17 +75,28 @@ void Extended4PCS::align ()
 
   findSimilarQuads ();
 
+  bool emptyFlag = true;
   for (int i = 0; i < quadMatchTable.size (); i++) {
     QuadMatch& qmatch = quadMatchTable[i];
     cout << "Quad " << i+1 << " # of matching quads = " << qmatch.matches.size () << endl;
+    if (qmatch.matches.size ()) {
+      emptyFlag = false;
+    }
+  }
+
+  if (emptyFlag) {
+    cout << "\n\n <<< NO MATCHING QUADS FOUND. RELAX SOME PARAMETERS AND TRY AGAIN >>> ..\n";
+    return;
   }
 
   cout << "\n";
 
+  // FIDNING THE BEST MATCHING QUAD
   for (int i = 0; i < quadMatchTable.size (); i++) {
     QuadMatch& qmatch = quadMatchTable[i];
     findBestQuadMatch (qmatch);
-  //  cout << "Found best match for Quad " << i+1 << "\n";
+    cout << "Found best match for Quad " << i+1 << "\t";
+    cout << qmatch.best_match << "\tRMS error = " << qmatch.least_error << "\n";
   }
 
   for (int i = 0; i < quadMatchTable.size (); i++) {
@@ -117,12 +129,140 @@ void Extended4PCS::align ()
 
   //return true;
 
+  //int color[3] = {255, 255, 255};
+  //displayPointCloud (pviz, source, color, (char *) "cloud1", vp1);
+
+  ////color[0] = 0, color[1] = 0, color[2] = 0;
+  //displayPointCloud (pviz, target, color, (char *) "cloud2", vp2);
+
+
+  debugQuadMatch ();
+
+  //for (int i = 0; i < quadMatchTable.size (); i++) {
+  //  double r = 0., g = 0., b = 0.;
+  //  switch (i%3) {
+  //    case 0: r = 1; break;
+  //    case 1: g = 1; break;
+  //    case 2: b = 1; break;
+  //  }
+
+  //  // only plot quads on the dominant plane
+  //  if (quadMatchTable[i].ignoreMatch) {
+  //    continue;
+  //  }
+
+  //  if (i == best_quad) {
+  //    plotMatchingQuads (pviz, quadMatchTable[i], r, g, b, vp1, vp2);
+  //  }
+  //}
+
+ // for (int i = 0; i < quadMatchTable.size (); i++) {
+ //   Quad& quad = *(quadMatchTable[i].quad);
+ //   if (quadMatchTable[i].ignoreMatch) {
+ //     continue;
+ //   }
+
+ //   Quad& mquad = quadMatchTable[i].matches[quadMatchTable[i].best_match];
+
+ //   //cout << "Angle between (" << source->points[quad.q[0]] << "," << quad.intersection.transpose ()
+ //   //  << ") and (" << quad.intersection.transpose () << "," << source->points[quad.q[3]] << ") is "
+ //   //  << quad.intersect_angle << endl;
+
+
+ //   //cout << "Angle between (" << target->points[mquad.q[0]] << "," << mquad.intersection.transpose ()
+ //   //  << ") and (" << mquad.intersection.transpose () << "," << target->points[mquad.q[3]] << ") is "
+ //   //  << mquad.intersect_angle << endl;
+ // }
+
+}
+
+//void displayPointCloud (PCLVisualizer* viz, CloudPtr cloud, int* color, 
+//                        char* name, int& viewport)
+//{
+//  PointCloudColorHandlerCustom <Point> tgt_h (cloud, color[0], color[1], color[2]);
+//  viz->addPointCloud (cloud, tgt_h, name, viewport);
+//}
+
+void Extended4PCS::debugQuadMatch ()
+{
+
+  int validMatches = 0;
+
+  for (int i = 0; i < quadMatchTable.size (); i++) {
+    if (!quadMatchTable[i].ignoreMatch) {
+      validMatches++;
+    }
+  }
+
+  cout << "DEBUG :: # of valid matches = " << validMatches << endl;
+
+  int quadsPerVis = 1;
+  int n_vis = floor (validMatches / quadsPerVis);
+  if (validMatches % quadsPerVis) {
+    n_vis++;
+  }
+
+  cout << "DEBUG :: # of visualizers = " << n_vis << endl;
+
+  vector <int> vp (quadsPerVis * 2);
+  for (int i = 1; i <= quadsPerVis * 2; i++) {
+    vp.push_back (i);
+  }
+
   int color[3] = {255, 255, 255};
-  displayPointCloud (source, color, (char *) "cloud1", vp1);
 
-  //color[0] = 0, color[1] = 0, color[2] = 0;
-  displayPointCloud (target, color, (char *) "cloud2", vp2);
+  static int cloud_id = 36488;
+  for (int i = 0; i < n_vis; i++) {
+    ostringstream ostr;
+    ostr << "Matching quads set " << i+1;
+    PCLVisualizer *v = new PCLVisualizer (argc_, argv_ , ostr.str ().c_str ());
+    char *name = NULL;
 
+    float steplen = 1. / quadsPerVis;
+    for (int k = 0; k < quadsPerVis; k++) {
+      v->createViewPort (0.0, k*steplen, 1./2, (k+1)*steplen, vp[2*k]);
+      ostr.str ("");
+      ostr << "cloud" << cloud_id++;
+      name = (char *)ostr.str ().c_str ();
+      displayPointCloud (v, source, color, name, vp[2*k]);
+
+      v->createViewPort (1./2, k*steplen, 1.0, (k+1)*steplen, vp[2*k+1]);
+      ostr.str ("");
+      ostr << "cloud" << cloud_id++;
+      name = (char *)ostr.str ().c_str ();
+      displayPointCloud (v, target, color, name, vp[2*k+1]);
+
+      //v->createViewPort (0.0, 1./3, 1./2, 2./3, vp[2]);
+      //ostr.str ("");
+      //ostr << "cloud" << cloud_id++;
+      //name = (char *)ostr.str ().c_str ();
+      //displayPointCloud (v, source, color, name, vp[2]);
+
+      //v->createViewPort (1./2, 1./3, 1., 2./3, vp[3]);
+      //ostr.str ("");
+      //ostr << "cloud" << cloud_id++;
+      //name = (char *)ostr.str ().c_str ();
+      //displayPointCloud (v, target, color, name, vp[3]);
+
+      //v->createViewPort (0.0, 2./3, 1./2, 1.0, vp[4]);
+      //ostr.str ("");
+      //ostr << "cloud" << cloud_id++;
+      //name = (char *)ostr.str ().c_str ();
+      //displayPointCloud (v, source, color, name, vp[4]);
+
+      //v->createViewPort (1./2, 2./3, 1.0, 1.0, vp[5]);
+      //ostr.str ("");
+      //ostr << "cloud" << cloud_id++;
+      //name = (char *)ostr.str ().c_str ();
+      //displayPointCloud (v, target, color, name, vp[5]);
+
+    }
+
+    v->setBackgroundColor (113.0/255, 113.0/255, 154.0/255);
+    V.push_back (v);
+  }
+
+  int z = 0;
   for (int i = 0; i < quadMatchTable.size (); i++) {
     double r = 0., g = 0., b = 0.;
     switch (i%3) {
@@ -131,32 +271,22 @@ void Extended4PCS::align ()
       case 2: b = 1; break;
     }
 
-    // only plot quads on the dominant plane
     if (quadMatchTable[i].ignoreMatch) {
       continue;
     }
 
-    plotMatchingQuads (quadMatchTable[i], r, g, b);
+    int k = (int) (z / quadsPerVis);
+
+    cout << "z = " << z << " :: Choosing visualizer " << k << endl;
+
+    int q = z % quadsPerVis;
+    plotMatchingQuads (V[k], quadMatchTable[i], r, g, b, vp[2*q], vp[2*q+1]);
+    z++;
   }
 
-  for (int i = 0; i < quadMatchTable.size (); i++) {
-    Quad& quad = *(quadMatchTable[i].quad);
-    if (quadMatchTable[i].ignoreMatch) {
-      continue;
-    }
-
-    Quad& mquad = quadMatchTable[i].matches[quadMatchTable[i].best_match];
-
-    //cout << "Angle between (" << source->points[quad.q[0]] << "," << quad.intersection.transpose ()
-    //  << ") and (" << quad.intersection.transpose () << "," << source->points[quad.q[3]] << ") is "
-    //  << quad.intersect_angle << endl;
-
-
-    //cout << "Angle between (" << target->points[mquad.q[0]] << "," << mquad.intersection.transpose ()
-    //  << ") and (" << mquad.intersection.transpose () << "," << target->points[mquad.q[3]] << ") is "
-    //  << mquad.intersect_angle << endl;
-  }
-
+  //foreach (PCLVisualizer* v, V) {
+  //  v->spin ();
+  //}
 }
 
 void Extended4PCS::cleanup ()
@@ -180,7 +310,7 @@ void Extended4PCS::findTransformationParameters ()
   for (int i = 0; i < quadMatchTable.size (); i++) {
     QuadMatch& qmatch = quadMatchTable[i];
 
-    if (qmatch.ignoreMatch) {
+    if (qmatch.ignoreMatch or qmatch.matches.size () == 0) {
       continue;
     }
 
@@ -197,11 +327,12 @@ void Extended4PCS::findTransformationParameters ()
     return;
   }
 
+  best_quad = index;
 
   cout << "\nChoosing quad " << index+1 << " for finding the "
     "final transformation\n\n";
 
-  QuadMatch& qmatch = quadMatchTable[index];
+  QuadMatch& qmatch = quadMatchTable[best_quad];
   CloudPtr cloud1 (new Cloud);
   CloudPtr cloud2 (new Cloud);
 
@@ -252,7 +383,7 @@ bool Extended4PCS::filterMatchingQuads ()
 
     if (quadMatchTable[i].ignoreMatch) {
       //cout << "\n\nSame plane check : Quad " << i+1 << " and Quad " << j+1 << " ";
-      cout << "\n\nSkipping Quad " << i+1 << " due to ignoreMatch\n";
+      //cout << "\n\nSkipping Quad " << i+1 << " due to ignoreMatch\n";
       continue;
     }
 
@@ -264,13 +395,13 @@ bool Extended4PCS::filterMatchingQuads ()
 
 
     if (quadMatchTable[j].ignoreMatch) {
-      cout << "\n\nSame plane check : Quad " << i+1 << " and Quad " << j+1 << " ";
-      cout << "Skipping Quad " << j+1 << " due to ignoreMatch\n";
+      //cout << "\n\nSame plane check : Quad " << i+1 << " and Quad " << j+1 << " ";
+      //cout << "Skipping Quad " << j+1 << " due to ignoreMatch\n";
       continue;
     }
 
 
-      cout << "\n\nSame plane check : Quad " << i+1 << " and Quad " << j+1 << endl;
+      //cout << "\n\nSame plane check : Quad " << i+1 << " and Quad " << j+1 << endl;
         
       if ( samePlaneCheck (quadMatchTable[i].matches[quadMatchTable[i].best_match],
                           quadMatchTable[j].matches[quadMatchTable[j].best_match]) )
@@ -347,8 +478,17 @@ bool Extended4PCS::filterMatchingQuads ()
   cout << " :: max cnt 1 = " << max_cnt1 << ", max_cnt2 = " << max_cnt2;
   cout << " ::  CONDITION " << (max_cnt1 - max_cnt2)  << " >= " << max_cnt1/2 << endl;
 
-  if ( (max_cnt1 - max_cnt2) <= 2 ) {
-    return false;
+  //if ( (max_cnt1 - max_cnt2) <= 2 ) {
+  //  return false;
+  //}
+
+
+  for (int i = 0; i < quadMatchTable.size (); i++) {
+    QuadMatch& qmatch = quadMatchTable[i];
+    if (qmatch.matches.size () != 0)
+      qmatch.ignoreMatch = false;
+    else 
+      qmatch.ignoreMatch = true;
   }
 
   if ( (max_cnt1 - max_cnt2) >= (max_cnt1/2) ) {
@@ -542,6 +682,9 @@ void Extended4PCS::estimateRigidBodyTransformation (CloudPtr src, CloudPtr tgt,
 void Extended4PCS::findBestQuadMatch (QuadMatch& qmatch)
 {
 
+  if (qmatch.matches.size () == 0) {
+    return;
+  }
   Quad& quad = *(qmatch.quad);
   CloudPtr cloud1 (new Cloud);
   foreach (int& index, quad.q) {
@@ -551,6 +694,8 @@ void Extended4PCS::findBestQuadMatch (QuadMatch& qmatch)
   cloud1->height = cloud1->points.size ();
 
   double rms_best = numeric_limits <double>::max ();
+
+  //cout << "findBestQuadMatch Error : ";
 
   for (int i = 0; i < qmatch.matches.size (); i++) {
     Quad& match = qmatch.matches[i];
@@ -566,11 +711,21 @@ void Extended4PCS::findBestQuadMatch (QuadMatch& qmatch)
     estimateRigidBodyTransformation (cloud1, cloud2, R, T);
     
     double rms_cur = 0;
+
+    CloudPtr sampledsource (new Cloud);
+    CloudPtr sampledtarget (new Cloud);
+
+    sampleCloud (source, 300, sampledsource);
+    sampleCloud (target, 300, sampledtarget);
+
+    //if ( (rms_cur = estimateError (sampledsource, sampledtarget, R, T) ) < rms_best) {
     if ( (rms_cur = estimateError (source, target, R, T) ) < rms_best) {
       rms_best = rms_cur;
       qmatch.best_match = i;
       qmatch.least_error = rms_best;
     }
+
+    //cout << rms_cur << "\t";
 
     //int cnt_best  = 0;
     //int cnt_cur = 0;
@@ -582,6 +737,35 @@ void Extended4PCS::findBestQuadMatch (QuadMatch& qmatch)
     //}
 
   }
+  cout << endl;
+}
+
+void Extended4PCS::sampleCloud (CloudPtr cloud, int N, CloudPtr sampledcloud)
+{
+  if (cloud->points.size () <= N) {
+    sampledcloud = cloud;
+  }
+  else {
+    srand (time (NULL));
+    for (int i = 0; i < N; i++) {
+      int k = rand () % cloud->points.size ();
+      sampledcloud->points.push_back (cloud->points[k]);
+    }
+    sampledcloud->width = 1;
+    sampledcloud->height = sampledcloud->points.size ();
+  }
+
+  //pcl::UniformSampling<Point> us;
+  //us.setInputCloud (cloud);
+  //double radius = 30;
+  //us.setRadiusSearch (radius);
+  //pcl::PointCloud<int> subsampled_indices;
+  //us.compute (subsampled_indices);
+  //std::sort (subsampled_indices.points.begin (), subsampled_indices.points.end ());
+  //pcl::copyPointCloud (*cloud, subsampled_indices.points, *sampledcloud);
+
+  //cout << "Points = " << cloud->points.size () << " "
+  //  << sampledcloud->points.size () << endl;
 }
 
 double Extended4PCS::estimateError (CloudPtr src, CloudPtr tgt, 
@@ -623,8 +807,8 @@ double Extended4PCS::estimateError (CloudPtr src, CloudPtr tgt,
   return error;
 }
 
-void Extended4PCS::plotMatchingQuads (QuadMatch& qmatch, double red,
-                              double green, double blue)
+void Extended4PCS::plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, double red,
+                              double green, double blue, int vp1, int vp2)
 {
 
   ostringstream ostr;
@@ -662,6 +846,7 @@ void Extended4PCS::plotMatchingQuads (QuadMatch& qmatch, double red,
   //for (int i = 0; i < qmatch.matches.size (); i++) 
   {
     Quad& quad = qmatch.matches[qmatch.best_match];
+    //Quad& quad = qmatch.matches[i];
 
     for (int k = 0; k <4; k++) {
       ostr << "sphere" << sphereId++;
@@ -707,8 +892,8 @@ void Extended4PCS::plotMatchingQuads (QuadMatch& qmatch, double red,
   }
 }
 
-void Extended4PCS::displayPointCloud (CloudPtr cloud, int* color, char* name,
-                              int& viewport)
+void Extended4PCS::displayPointCloud (PCLVisualizer* viz, CloudPtr cloud, int* color, 
+                                      char* name, int& viewport)
 {
   PointCloudColorHandlerCustom <Point> tgt_h (cloud, color[0], color[1], color[2]);
   viz->addPointCloud (cloud, tgt_h, name, viewport);
@@ -763,7 +948,7 @@ void Extended4PCS::findSimilarQuads ()
       Eigen::Vector3f a = target->points[r2_pts[i]].getVector3fMap ();
       Eigen::Vector3f b = target->points[r2_pts[i+1]].getVector3fMap ();
 
-      if ( ( (a-b).norm () - qmatch.cd_len)  > param.length_similarity_threshold){
+      if ( ( (a-b).norm () - qmatch.cd_len)  > param.length_similarity_threshold) {
         //cout << "*** Point pairs NOT MATCHING CD length criteria ..\n";
       }
       else {

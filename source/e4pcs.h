@@ -97,10 +97,10 @@ class Extended4PCS
         D += offset;
       }
 
-      param.random_tries = 1000; // for selecting the plane containing max points
+      param.random_tries = 100; // for selecting the plane containing max points
 
       // this parameter is constant
-      param.angle_threshold = 2.0; // angle threshold at quad intersections
+      param.angle_threshold = 5.0; // angle threshold at quad intersections
 
       // change this depending on the span of your dataset
       param.min_dist = min_dist; // ensures min dist between |ab|, |ac|, |ad|, |bc|, |bd|, |cd| so that a, b, c & d are not too close
@@ -126,11 +126,13 @@ class Extended4PCS
     {
     }
 
+    void setArgs (int argc, char **argv) { argc_ = argc; argv_ = argv; }
+
     void setSource (CloudPtr src) { source = src; }
 
     void setTarget (CloudPtr tgt) { target = tgt; }
 
-    void setVisualizer (PCLVisualizer* v) { viz = v; }
+    void setVisualizer (PCLVisualizer* v) { pviz = v; }
 
     void setNumQuads (int n) { num_quads = n; }
 
@@ -144,6 +146,7 @@ class Extended4PCS
 
     void getTransformation (Eigen::Matrix4f& mat) { mat = transform; }
 
+    vector <PCLVisualizer*>& getVisualizers () { return V; }
 
   private:
 
@@ -168,10 +171,10 @@ class Extended4PCS
 
     int findMatchingPoint (KdTree& kdtree, Point pt);
 
-    void plotMatchingQuads (QuadMatch& qmatch, double r,
-                            double g, double b);
+    void plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, double r,
+                            double g, double b, int vp1, int vp2);
 
-    void displayPointCloud (CloudPtr cloud, int* color, char* name,
+    void displayPointCloud (PCLVisualizer* viz, CloudPtr cloud, int* color, char* name,
                             int& viewport);
 
     void findIntersection (CloudPtr cloud, int x1, int x2, 
@@ -210,9 +213,15 @@ class Extended4PCS
 
     void findTransformationParameters ();
 
+    void sampleCloud (CloudPtr cloud, int N, CloudPtr sampledcloud);
+
     void cleanup ();
 
+    void debugQuadMatch ();
+
     int num_quads;
+
+    int best_quad;
 
     int vp1;
     int vp2;
@@ -232,9 +241,13 @@ class Extended4PCS
 
     Eigen::Matrix4f transform;
 
-    PCLVisualizer* viz;
+    PCLVisualizer* pviz;
+    vector <PCLVisualizer*> V;
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    int argc_;
+    char **argv_;
 
 };
 

@@ -1,19 +1,18 @@
 #pragma once
 
 #include "typedefs.h"
+#include "keypoints_interface.h"
 
 #include <vector>
 using namespace std;
 
 #include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/kdtree/kdtree_flann.h>
 
 using namespace pcl::visualization;
 
 
 namespace E4PCS {
 
-typedef pcl::KdTreeFLANN <Point> KdTree;
 
 struct Quad
 {
@@ -70,7 +69,7 @@ struct QuadMatch
   int cnt_best;
 };
 
-struct Params
+struct E4PCSParams
 {
   int random_tries;
   float min_dist;
@@ -86,6 +85,51 @@ class Extended4PCS
 {
   protected:
 
+    int num_quads;
+
+    int median_count;
+
+    int best_quad;
+
+    int vp1;
+    int vp2;
+
+    CloudPtr source;
+    CloudPtr target;
+
+    CloudPtr sourcefull;
+    CloudPtr targetfull;
+
+    vector <int> plane_pts;
+    vector <Quad> quads;
+
+    vector <QuadMatch> quadMatchTable;
+    vector <PointList> pointListTable;
+
+    E4PCSParams param;
+
+    string sampling_type;
+
+    double rms;
+
+    Eigen::Matrix4f transform;
+
+    PCLVisualizer* pviz;
+    vector <PCLVisualizer*> V;
+
+    float random_sampling_ratio1;
+    float random_sampling_ratio2;
+    float region_around_radius;
+    float windowsize;
+
+
+    KeypointParamsPtr keypoint_par;
+
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    int argc_;
+    char **argv_;
+
 
   public:
 
@@ -97,7 +141,7 @@ class Extended4PCS
         D += offset;
       }
 
-      param.random_tries = 100; // for selecting the plane containing max points
+      param.random_tries = 500; // for selecting the plane containing max points
 
       // this parameter is constant
       param.angle_threshold = 5.0; // angle threshold at quad intersections
@@ -128,13 +172,25 @@ class Extended4PCS
 
     void setArgs (int argc, char **argv) { argc_ = argc; argv_ = argv; }
 
-    void setSource (CloudPtr src) { source = src; }
+    void setSource (CloudPtr src) { sourcefull = src; }
 
-    void setTarget (CloudPtr tgt) { target = tgt; }
+    void setTarget (CloudPtr tgt) { targetfull = tgt; }
 
     void setVisualizer (PCLVisualizer* v) { pviz = v; }
 
     void setNumQuads (int n) { num_quads = n; }
+
+    void setSamplingType (string& type) { sampling_type = type; }
+
+    void setKeypointParams (KeypointParamsPtr& par) { keypoint_par = par; }
+
+    void setSamplingRatio1 (float ratio) { random_sampling_ratio1 = ratio; }
+
+    void setSamplingRatio2 (float ratio) { random_sampling_ratio2 = ratio; }
+
+    void setWindowSize (float size) { windowsize = size; }
+
+    void setRadiusOfRegionAroundKeypoint (float rad) { region_around_radius = rad; }
 
     vector <int>& getPlanePoints () { return plane_pts; }
 
@@ -148,14 +204,37 @@ class Extended4PCS
 
     vector <PCLVisualizer*>& getVisualizers () { return V; }
 
+
+
   private:
 
     void select3Points (CloudPtr cloud, int& a, int& b, int& c);
+
+    void samplingRandom ();
+
+    void samplingRandomOnWindows ();
+
+    void samplingKeypoints ();
+
+    void samplingKeypointsAndRegionsAround ();
+
+    void samplingKeypointsAndRandom ();
+
+    void partitionCloud (CloudPtr& cloud, 
+                          vector <vector <CloudPtr> >& partitions,
+                          float windowsize, int& nx, int& ny);
 
     void selectMaxPlane ();
 
     void findPointsOnPlane (CloudPtr cloud, int a, int b,
                         int c, vector <int>& pts);
+
+    void computeKeypoints ( CloudPtr cloud,
+                            CloudPtr& keypoints,
+                            string type);
+
+    void addPointsWithinRadius (CloudPtr cloud1, CloudPtr cloud2,
+                                          float radius);
 
     void selectQuads (vector <int>& plane_pts, int N);
 
@@ -215,39 +294,12 @@ class Extended4PCS
 
     void sampleCloud (CloudPtr cloud, int N, CloudPtr sampledcloud);
 
+    void findMedianCount ();
+
     void cleanup ();
 
     void debugQuadMatch ();
 
-    int num_quads;
-
-    int best_quad;
-
-    int vp1;
-    int vp2;
-
-    CloudPtr source;
-    CloudPtr target;
-
-    vector <int> plane_pts;
-    vector <Quad> quads;
-
-    vector <QuadMatch> quadMatchTable;
-    vector <PointList> pointListTable;
-
-    Params param;
-
-    double rms;
-
-    Eigen::Matrix4f transform;
-
-    PCLVisualizer* pviz;
-    vector <PCLVisualizer*> V;
-
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-    int argc_;
-    char **argv_;
 
 };
 

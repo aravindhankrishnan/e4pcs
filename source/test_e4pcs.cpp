@@ -5,7 +5,9 @@ using namespace std;
 
 #include "io.h"
 #include "e4pcs.h"
+#include "config.h"
 #include "typedefs.h"
+#include "keypoints_interface.h"
 
 #include <boost/foreach.hpp>
 #include <boost/random.hpp>
@@ -16,20 +18,6 @@ using namespace std;
 
 using namespace pcl::visualization;
 
-float D;
-float fringe[4];
-float sphere_radius;
-float abcd_mindist;
-float corr_max_range;
-string sourcefile;
-string targetfile;
-string filetype1;
-string filetype2;
-string samplingtype;
-int numQuads;
-int numPoints1;
-int numPoints2;
-int visNumPoints;
 
 void sampleCloud (CloudPtr cloud, int N, CloudPtr sampledcloud,
                   string samplingtype)
@@ -221,157 +209,10 @@ void makeEven (CloudPtr cloud1, CloudPtr cloud2)
 
 }
 
-void readLine (ifstream& ifile, string& line)
-{
-    char buff[2048];
-    fill_n (buff, 2048, '\0');
-    ifile.getline (buff, 2048);
-    line = buff;
-}
-
-int loadConfigFile (const char* filename)
-{
-  cout << endl;
-
-  ifstream ifile (filename);
-  if (!ifile) {
-    cout << "Cannot load config file .. " << filename << " ..\n\n";
-    return -1;
-  }
-
-  while (ifile) {
-
-    string line;
-    readLine (ifile, line);
-
-    if ( (line.length () == 0) or (line[0] == '#')) {
-      continue;
-    }
-
-    istringstream istr (line);
-    string keyword;
-    string val;
-
-    istr >> keyword >> val;
-
-    //cout << "keyword = " << keyword << " val = " << val << endl;
-
-    if (keyword.compare ("source") == 0 ) {
-      cout << "Source cloud = " << val << endl;
-      sourcefile = val;
-      
-      readLine (ifile, line);
-      //cout << "LINE :: " << line << endl;
-      istringstream istr1 (line);
-
-      keyword = "", val = "";
-      istr1 >> keyword >> val;
-      //cout << "keyword = " << keyword << " val = " << val << endl;
-      if (keyword.compare ("type") == 0) {
-        cout << "Type = *" << val << "*\n";
-        filetype1 = val;
-      }
-      else {
-        cout << "File type not entered for source cloud..\n";
-        return -1;
-      }
-      continue;
-    }
-
-    if (keyword.compare ("target") == 0 ) {
-      cout << "Target cloud = " << val << endl;
-      targetfile = val;
-
-      readLine (ifile, line);
-
-      istringstream istr1 (line);
-
-      keyword = "", val = "";
-      istr1 >> keyword >> val;
-      //cout << "keyword = " << keyword << " val = " << val << endl;
-      if (keyword.compare ("type") == 0) {
-        cout << "Type = **" << val << "**\n";
-        filetype2 = val;
-      }
-      else {
-        cout << "File type not entered for target cloud..\n";
-        return -1;
-      }
-      continue;
-    }
-
-    if (keyword.compare ("fringe") == 0 ) {
-      fringe[0] = atof (val.c_str ());
-      istr >> fringe[1];
-      istr >> fringe[2];
-      istr >> fringe[3];
-      cout << "Fringe = " << fringe[0] << " " <<
-        fringe[1] << " " << fringe[2] << " " << fringe[3] << endl;
-      continue;
-    }
-
-    if (keyword.compare ("numquads") == 0 ) {
-      cout << "Number of quads = " << val << endl;
-      numQuads = atoi (val.c_str ());
-      continue;
-    }
-
-    if (keyword.compare ("samplingtype") == 0 ) {
-      cout << "Sampling type = " << val << endl;
-      samplingtype = val;
-      continue;
-    }
-
-    if (keyword.compare ("sampling1") == 0 ) {
-      cout << "Number of points sampled = " << val << endl;
-      numPoints1 = atoi (val.c_str ());
-      continue;
-    }
-
-    if (keyword.compare ("sampling2") == 0 ) {
-      cout << "Number of points sampled = " << val << endl;
-      numPoints2 = atoi (val.c_str ());
-      continue;
-    }
-
-    if (keyword.compare ("errorballdiameter") == 0 ) {
-      cout << "Error ball diameter = " << val << endl;
-      D = atof (val.c_str ());
-      continue;
-    }
-
-    if (keyword.compare ("abcd_mindist") == 0 ) {
-      cout << "ABCD min dist = " << val << endl;
-      abcd_mindist = atof (val.c_str ());
-      continue;
-    }
-
-    if (keyword.compare ("corr_max_range") == 0 ) {
-      cout << "Correspondence max range = " << val << endl;
-      corr_max_range = atof (val.c_str ());
-      continue;
-    }
-
-    if (keyword.compare ("vis_sampling") == 0 ) {
-      cout << "Visualization Sampling = " << val << endl;
-      visNumPoints = atoi (val.c_str ());
-      continue;
-    }
-
-    if (keyword.compare ("vis_sphereradius") == 0 ) {
-      cout << "Visualization Sphere radius = " << val << endl;
-      sphere_radius = atof (val.c_str ());
-      continue;
-    }
-  }
-  cout << "file type1 = *" << filetype1 << "*\n";
-  cout << "file type2 = *" << filetype2 << "*\n";
-  cout << endl << endl;
-}
-
 
 int main (int argc, char *argv[])
 {
+  try {
 
   if (argc < 2) {
     cout << "Enter the configuration file ..\n";
@@ -382,60 +223,63 @@ int main (int argc, char *argv[])
     return -1;
   }
 
+  InputParamsPtr args = getInputParams ();
+
+  //return 0;
+
   using namespace E4PCS;
 
   CloudPtr cloud1 ( new Cloud );
   CloudPtr cloud2 ( new Cloud );
 
-  if (filetype1.compare ("ascii") == 0) {
-    readASCIIFile (sourcefile.c_str (), cloud1);
+  if (args->filetype1.compare ("ascii") == 0) {
+    readASCIIFile (args->sourcefile.c_str (), cloud1);
   }
-  else if (filetype1.compare ("pcdbinary") == 0) {
-    readPCDBinaryFile (sourcefile.c_str (), cloud1);
-  }
-
-  if (filetype2.compare ("ascii") == 0) {
-    readASCIIFile (targetfile.c_str (), cloud2);
-  }
-  else if (filetype2.compare ("pcdbinary") == 0) {
-    readPCDBinaryFile (targetfile.c_str (), cloud2);
+  else if (args->filetype1.compare ("pcdbinary") == 0) {
+    readPCDBinaryFile (args->sourcefile.c_str (), cloud1);
   }
 
-  //PCLVisualizer* p = new PCLVisualizer (argc, argv, "Initial data");
+  if (args->filetype2.compare ("ascii") == 0) {
+    readASCIIFile (args->targetfile.c_str (), cloud2);
+  }
+  else if (args->filetype2.compare ("pcdbinary") == 0) {
+    readPCDBinaryFile (args->targetfile.c_str (), cloud2);
+  }
+
+  PCLVisualizer* p = new PCLVisualizer (argc, argv, "Initial data");
 
   int vp1 = 1;
-  //p->createViewPort (0.0, 0.0, 0.5, 1.0, vp1);
-  //p->setBackgroundColor (113.0/255, 113.0/255, 154.0/255, vp1);
+  p->createViewPort (0.0, 0.0, 0.5, 1.0, vp1);
 
   int vp2 = 2;
-  //p->createViewPort (0.5, 0.0, 1.0, 1.0, vp2);
+  p->createViewPort (0.5, 0.0, 1.0, 1.0, vp2);
 
-  //p->setBackgroundColor (113.0/255, 113.0/255, 154.0/255);
+  p->setBackgroundColor (113.0/255, 113.0/255, 154.0/255);
   //p->setBackgroundColor (113.0/255, 113.0/255, 154.0/255, vp2);
 
   //p->setBackgroundColor (25./255, 25.0/255, 25.0/255);
   //p->setBackgroundColor (255, 255, 255, vp2);
 
-  float sd = D / 6.; // the point can lie in a 'D/2' m radius. so 6 sigma = D.
+  float sd = args->D / 6.; // the point can lie in a 'D/2' m radius. so 6 sigma = D.
   addGaussianNoise (cloud2, sd);
 
-  CloudPtr sampledcloud1 (new Cloud);
-  CloudPtr sampledcloud2 (new Cloud);
+  //CloudPtr sampledcloud1 (new Cloud);
+  //CloudPtr sampledcloud2 (new Cloud);
 
-  if (samplingtype.compare ("random") == 0) {
-    sampleCloud (cloud1, numPoints1, sampledcloud1, samplingtype);
-    sampleCloud (cloud2, numPoints2, sampledcloud2, samplingtype);
-  }
-  else if (samplingtype.compare ("uniform") == 0) {
-    CloudPtr tmp1 (new Cloud);
-    CloudPtr tmp2 (new Cloud);
+  //if (samplingtype.compare ("random") == 0) {
+  //  sampleCloud (cloud1, numPoints1, sampledcloud1, samplingtype);
+  //  sampleCloud (cloud2, numPoints2, sampledcloud2, samplingtype);
+  //}
+  //else if (samplingtype.compare ("uniform") == 0) {
+  //  CloudPtr tmp1 (new Cloud);
+  //  CloudPtr tmp2 (new Cloud);
 
-    sampleCloud (cloud1, numPoints1, tmp1, "random");
-    sampleCloud (cloud2, numPoints2, tmp2, "random");
+  //  sampleCloud (cloud1, numPoints1, tmp1, "random");
+  //  sampleCloud (cloud2, numPoints2, tmp2, "random");
 
-    sampleCloud (tmp1, numPoints1, sampledcloud1, samplingtype);
-    sampleCloud (tmp2, numPoints2, sampledcloud2, samplingtype);
-  }
+  //  sampleCloud (tmp1, numPoints1, sampledcloud1, samplingtype);
+  //  sampleCloud (tmp2, numPoints2, sampledcloud2, samplingtype);
+  //}
 
   //cout << "Before makeEven " << sampledcloud2->points.size () << endl;
   //makeEven (sampledcloud1, sampledcloud2);
@@ -443,12 +287,31 @@ int main (int argc, char *argv[])
 
   //return 0;
 
-  Extended4PCS e4pcs (D, abcd_mindist, corr_max_range);
+
+  Extended4PCS e4pcs (args->D, args->abcd_mindist, args->corr_max_range);
   e4pcs.setArgs (argc, argv);
-  e4pcs.setSource (sampledcloud1);
-  e4pcs.setTarget (sampledcloud2);
-  //e4pcs.setVisualizer (p);
-  e4pcs.setNumQuads (numQuads);
+  e4pcs.setSource (cloud1);
+  e4pcs.setTarget (cloud2);
+  e4pcs.setSamplingType (args->sampling_type);
+  e4pcs.setVisualizer (p);
+  e4pcs.setNumQuads (args->num_quads);
+  e4pcs.setKeypointParams (args->keypoint_par);
+
+  if (args->sampling_type.find ("random") != string::npos) {
+    e4pcs.setSamplingRatio1 (args->random_sampling_ratio1);
+  }
+
+  if (args->sampling_type.compare ("random") == 0) {
+    e4pcs.setSamplingRatio2 (args->random_sampling_ratio2);
+  }
+
+  if (args->sampling_type.compare ("keypointsandregionsaround") == 0) {
+    e4pcs.setRadiusOfRegionAroundKeypoint (args->region_around_radius);
+  }
+
+  if (args->sampling_type.compare ("randomonwindows") == 0) {
+    e4pcs.setWindowSize (args->windowsize);
+  }
 
   e4pcs.align (); 
 
@@ -475,8 +338,8 @@ int main (int argc, char *argv[])
   CloudPtr op_cloud2 (new Cloud);
   //op_cloud1 = sampledcloud1;
   //op_cloud2 = sampledcloud2;
-  sampleCloud (cloud1, visNumPoints, op_cloud1, "random");
-  sampleCloud (cloud2, visNumPoints, op_cloud2, "random");
+  sampleCloud (cloud1, args->vis_num_points, op_cloud1, "random");
+  sampleCloud (cloud2, args->vis_num_points, op_cloud2, "random");
 
   cout << "# points in sampled cloud 1 = " << op_cloud1->points.size () << endl;
   cout << "# points in sampled cloud 2 = " << op_cloud2->points.size () << endl;
@@ -516,12 +379,18 @@ int main (int argc, char *argv[])
   displayPointCloud (final, op_cloud3, color, (char *) "opcloud12", vp2);
 
 
+  p->spin ();
   final->spin ();
 
   vector <PCLVisualizer*>& V = e4pcs.getVisualizers ();
 
   BOOST_FOREACH (PCLVisualizer* p, V) {
     p->spin ();
+  }
+
+  }
+  catch (std::exception& e) {
+    cout << "\n\nException :: " << e.what () << "\n\n";
   }
 
   return 0;

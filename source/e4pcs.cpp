@@ -1,4 +1,5 @@
 #include "e4pcs.h"
+#include "keypoints_interface.h"
 #include <utils/timer.h>
 
 #include <pcl/features/normal_3d.h>
@@ -16,24 +17,47 @@ using namespace std;
 
 #define foreach BOOST_FOREACH
 
-
-extern float sphere_radius;
-
 namespace E4PCS {
+
+float sphere_radius;
 
 
 void Extended4PCS::align ()
 {
+  source.reset (new Cloud);
+  target.reset (new Cloud);
+  
+  if (sampling_type.compare ("random") == 0) {
+    samplingRandom ();
+  }
+  else if (sampling_type.compare ("randomonwindows") == 0) {
+    samplingRandomOnWindows ();
+  }
+  else if (sampling_type.compare ("keypoints") == 0) {
+    samplingKeypoints ();
+  }
+  else if (sampling_type.compare ("keypointsandregionsaround") == 0) {
+    samplingKeypointsAndRegionsAround ();
+  }
+  else if (sampling_type.compare ("keypointsandrandom") == 0) {
+    samplingKeypointsAndRandom ();
+  }
+
+  if (source->points.size () == 0) {
+    throw std::runtime_error ("Zero points in source after sampling ..");
+  }
+  if (target->points.size () == 0) {
+    throw std::runtime_error ("Zero points in target after sampling ..");
+  }
+
+  int C[3] = {255, 255, 255};
+  displayPointCloud (pviz, source, C, (char *)"cloud7473", vp1);
+  displayPointCloud (pviz, target, C, (char *)"cloud7474", vp2);
+
   selectMaxPlane ();
 
   int N = num_quads;
   selectQuads (plane_pts, N);
-
-  //for (int i = 0; i < quads.size (); i++) {
-  //  cout << quads[i].q[0] << " " << quads[i].q[1] << " "
-  //       << quads[i].q[2] << " " << quads[i].q[3] << endl;
-  //}
-
 
   cout << "\n\nSelected " << quads.size () << " quads in source cloud ..\n";
 
@@ -91,39 +115,45 @@ void Extended4PCS::align ()
 
   cout << "\n";
 
+  findMedianCount ();
+  cout << "MEDIAN COUNT = " << median_count << "\n\n";
+
   // FIDNING THE BEST MATCHING QUAD
   for (int i = 0; i < quadMatchTable.size (); i++) {
     QuadMatch& qmatch = quadMatchTable[i];
     findBestQuadMatch (qmatch);
+    if (qmatch.best_match == -1) {
+      continue;
+    }
     cout << "Found best match for Quad " << i+1 << "\t";
     cout << qmatch.best_match << "\tRMS error = " << qmatch.least_error << "\n";
   }
 
-  for (int i = 0; i < quadMatchTable.size (); i++) {
-    if (quadMatchTable[i].best_match != -1) {
-      cout << "Best match for quad " << i+1 << " is " 
-        << quadMatchTable[i].best_match + 1 << " of "
-        << quadMatchTable[i].matches.size () << "\t"
-        << "Error is " << quadMatchTable[i].least_error << endl;
-      continue;
-    }
+  //for (int i = 0; i < quadMatchTable.size (); i++) {
+  //  if (quadMatchTable[i].best_match != -1) {
+  //    cout << "Best match for quad " << i+1 << " is " 
+  //      << quadMatchTable[i].best_match + 1 << " of "
+  //      << quadMatchTable[i].matches.size () << "\t"
+  //      << "Error is " << quadMatchTable[i].least_error << endl;
+  //    continue;
+  //  }
 
-    quadMatchTable[i].ignoreMatch = true;
-    cout << "Match for quad " << i+1 << " NOT FOUND\n";
-  }
+  //  quadMatchTable[i].ignoreMatch = true;
+  //  cout << "Match for quad " << i+1 << " NOT FOUND\n";
+  //}
 
-  cout << endl;
+  //cout << endl;
 
   // among matching quads, select the ones on a plane
   // All quads in the source cloud are on a plane, so 
   // enforcing the same constraint
-  if ( !filterMatchingQuads () ) {
-    cout << "\n\n\n";
-    cout << "**************** Selecting a NEW PLANE *****************\n\n";
-    cleanup ();
-    align ();
-    return;
-  }
+  //if ( !filterMatchingQuads () ) {
+  //  cout << "\n\n\n";
+  //  cout << "**************** Selecting a NEW PLANE *****************\n\n";
+  //  cleanup ();
+  //  align ();
+  //  return;
+  //}
 
   findTransformationParameters ();
 
@@ -136,25 +166,25 @@ void Extended4PCS::align ()
   //displayPointCloud (pviz, target, color, (char *) "cloud2", vp2);
 
 
-  debugQuadMatch ();
+  //debugQuadMatch ();
 
-  //for (int i = 0; i < quadMatchTable.size (); i++) {
-  //  double r = 0., g = 0., b = 0.;
-  //  switch (i%3) {
-  //    case 0: r = 1; break;
-  //    case 1: g = 1; break;
-  //    case 2: b = 1; break;
-  //  }
+  for (int i = 0; i < quadMatchTable.size (); i++) {
+    double r = 0., g = 0., b = 0.;
+    switch (i%3) {
+      case 0: r = 1; break;
+      case 1: g = 1; break;
+      case 2: b = 1; break;
+    }
 
-  //  // only plot quads on the dominant plane
-  //  if (quadMatchTable[i].ignoreMatch) {
-  //    continue;
-  //  }
+    // only plot quads on the dominant plane
+    if (quadMatchTable[i].ignoreMatch) {
+      continue;
+    }
 
-  //  if (i == best_quad) {
-  //    plotMatchingQuads (pviz, quadMatchTable[i], r, g, b, vp1, vp2);
-  //  }
-  //}
+    if (i == best_quad) {
+      plotMatchingQuads (pviz, quadMatchTable[i], r, g, b, vp1, vp2);
+    }
+  }
 
  // for (int i = 0; i < quadMatchTable.size (); i++) {
  //   Quad& quad = *(quadMatchTable[i].quad);
@@ -182,6 +212,292 @@ void Extended4PCS::align ()
 //  PointCloudColorHandlerCustom <Point> tgt_h (cloud, color[0], color[1], color[2]);
 //  viz->addPointCloud (cloud, tgt_h, name, viewport);
 //}
+
+void Extended4PCS::samplingRandom ()
+{
+  srand (time (NULL));
+  for (int i = 0; i < random_sampling_ratio1 * sourcefull->points.size (); i++) {
+    int k = rand () % sourcefull->points.size ();
+    source->points.push_back (sourcefull->points[k]);
+  }
+
+  srand (time (NULL));
+  for (int i = 0; i < random_sampling_ratio2 * targetfull->points.size (); i++) {
+    int k = rand () % targetfull->points.size ();
+    target->points.push_back (targetfull->points[k]);
+  }
+
+  source->width = target->width = 1;
+
+  source->height = source->points.size ();
+  target->height = target->points.size ();
+}
+
+
+void Extended4PCS::samplingRandomOnWindows ()
+{
+  vector <vector <CloudPtr> > sourcepartitions;
+  vector <vector <CloudPtr> > targetpartitions;
+
+  int nx (0), ny (0);
+
+  partitionCloud (sourcefull, sourcepartitions, windowsize, nx, ny);
+
+  nx = 0, ny = 0;
+
+  partitionCloud (targetfull, targetpartitions, windowsize, nx, ny);
+
+  float ratio = random_sampling_ratio1;
+
+  cout << "Sampling ratio = " << ratio << endl;
+
+
+  foreach (vector <CloudPtr>& row, sourcepartitions) {
+    foreach (CloudPtr& cloud, row) {
+      int N = ratio * cloud->points.size ();
+      //cout << "Selecting " << N << " out of " << cloud->points.size () << " points ..\n";
+      srand (time (NULL));
+      for (int i = 0; i < N; i++) {
+        int k = rand () % cloud->points.size ();
+        source->points.push_back (cloud->points[k]);
+      }
+    }
+  }
+
+  source->width = 1;
+  source->height = source->points.size ();
+
+  foreach (vector <CloudPtr>& row, targetpartitions) {
+    foreach (CloudPtr& cloud, row) {
+      int N = ratio * cloud->points.size ();
+      srand (time (NULL));
+      for (int i = 0; i < N; i++) {
+        int k = rand () % cloud->points.size ();
+        target->points.push_back (cloud->points[k]);
+      }
+    }
+  }
+
+  target->width = 1;
+  target->height = target->points.size ();
+
+  cout << "# of points in source = " << source->points.size () << endl;
+  cout << "# of points in target = " << target->points.size () << endl;
+
+
+}
+
+
+void Extended4PCS::samplingKeypoints ()
+{
+  computeKeypoints (sourcefull, source, keypoint_par->keypoint_type);
+  cout << "Computed keypoints for source .. " << 
+    source->points.size () << endl;
+
+  if (source->points.size () == 0) {
+    cout << "Not enough keypoints in source, check keypoint parameters ..\n";
+    return;
+  }
+
+  computeKeypoints (targetfull, target, keypoint_par->keypoint_type);
+  cout << "Computed keypoints for target .. " << 
+        target->points.size () << endl;
+
+  if (target->points.size () == 0) {
+    cout << "Not enough keypoints in target, check keypoint parameters ..\n";
+    return;
+  }
+}
+
+void Extended4PCS::samplingKeypointsAndRegionsAround ()
+{
+
+  computeKeypoints (sourcefull, source, keypoint_par->keypoint_type);
+  cout << "Computed keypoints for source .. " << 
+    source->points.size () << endl;
+
+  if (source->points.size () == 0) {
+    cout << "Not enough keypoints in source, check keypoint parameters ..\n";
+    return;
+  }
+
+  //addPointsWithinRadius (source, sourcefull, radius);
+
+  computeKeypoints (targetfull, target, keypoint_par->keypoint_type);
+  cout << "Computed keypoints for target .. " << 
+        target->points.size () << endl;
+
+  if (target->points.size () == 0) {
+    cout << "Not enough keypoints in target, check keypoint parameters ..\n";
+    return;
+  }
+
+  addPointsWithinRadius (target, targetfull, region_around_radius);
+}
+
+void Extended4PCS::samplingKeypointsAndRandom ()
+{
+  computeKeypoints (sourcefull, source, keypoint_par->keypoint_type);
+  cout << "Computed keypoints for source .. " << 
+    source->points.size () << endl;
+
+  if (source->points.size () == 0) {
+    cout << "Not enough keypoints in source, check keypoint parameters ..\n";
+    return;
+  }
+
+  float ratio = random_sampling_ratio1;
+
+  srand (time (NULL));
+  for (int i = 0; i < ratio * sourcefull->points.size (); i++) {
+    int k = rand () % sourcefull->points.size ();
+    source->points.push_back (sourcefull->points[k]);
+  }
+
+  computeKeypoints (targetfull, target, keypoint_par->keypoint_type);
+  cout << "Computed keypoints for target .. " << 
+        target->points.size () << endl;
+
+  if (target->points.size () == 0) {
+    cout << "Not enough keypoints in target, check keypoint parameters ..\n";
+    return;
+  }
+
+
+  srand (time (NULL));
+  for (int i = 0; i < ratio * targetfull->points.size (); i++) {
+    int k = rand () % targetfull->points.size ();
+    target->points.push_back (targetfull->points[k]);
+  }
+
+  source->width = target->width = 1;
+
+  source->height = source->points.size ();
+  target->height = target->points.size ();
+
+}
+
+
+void Extended4PCS::partitionCloud (CloudPtr& cloud, 
+                                    vector <vector <CloudPtr> >& partitions,
+                                    float windowsize, int& nx, int& ny)
+{
+  float minx = numeric_limits <float>::max ();
+  float miny = numeric_limits <float>::max ();
+  float maxx = numeric_limits <float>::min ();
+  float maxy = numeric_limits <float>::min ();
+
+
+  foreach (Point& pt, cloud->points) {
+
+    if (pt.x < minx) {
+      minx = pt.x;
+    }
+    if (pt.y < miny) {
+      miny = pt.y;
+    }
+
+    if (pt.x > maxx) {
+      maxx = pt.x;
+    }
+    if (pt.y > maxy) {
+      maxy = pt.y;
+    }
+  }
+
+  nx = ceil ((maxx-minx) / windowsize);
+  ny = ceil ((maxy-miny) / windowsize);
+  cout << "nx = " << nx << " ny = " << ny << endl;
+
+  partitions.reserve (nx);
+
+  for (int i = 0; i < nx; i++) {
+    partitions.push_back (vector <CloudPtr> ());
+  }
+
+  for (int i = 0; i < nx; i++) {
+    vector<CloudPtr> &vec = partitions[i];
+    for (int j = 0; j < ny; j++) {
+      CloudPtr C (new Cloud);
+      vec.push_back (C);
+    }
+  }
+
+	size_t N = cloud->points.size ();
+
+	for (size_t i = 0; i < N; i++) {
+		size_t ix = 0, iy = 0;
+		float x = cloud->points[i].x;
+		float y = cloud->points[i].y;
+		ix = int (floor ( (x-minx) / windowsize ) );
+		iy = int (floor ( (y-miny) / windowsize ) );
+
+		CloudPtr &C = partitions[ix][iy];
+		C->points.push_back (cloud->points[i]);
+	}
+
+	for (int i = 0; i < nx; i++) {
+		for (int j = 0; j < ny; j++) {
+			partitions[i][j]->height = partitions[i][j]->points.size ();
+      //cout << "# points in " << i << " " << j << " is "
+      //  << partitions[i][j]->points.size () << endl;
+
+			partitions[i][j]->width = 1;
+		}
+	}
+}
+
+
+void Extended4PCS::findMedianCount ()
+{
+  vector <int> counts;
+  for (int i = 0; i < quadMatchTable.size (); i++) {
+    QuadMatch& qmatch = quadMatchTable[i];
+    int count = qmatch.matches.size ();
+    if (count != 0) {
+      counts.push_back (count);
+    }
+  }
+
+  sort (counts.begin (), counts.end (), std::less <int> ());
+  int mi =  (4./5) * counts.size ();
+  median_count = counts[mi];
+
+}
+
+void Extended4PCS::addPointsWithinRadius (CloudPtr cloud1, CloudPtr cloud2,
+                                          float radius)
+{
+  KdTreePtr tree (new KdTree);
+  tree->setInputCloud (cloud2);
+
+  foreach (Point& pt, cloud1->points) {
+    vector <int> ids;
+    vector <float> dist;
+
+    if (tree->radiusSearch (pt, radius, ids, dist) > 0) {
+      foreach (int& i, ids) {
+        cloud1->points.push_back (cloud2->points[i]);
+      }
+    }
+  }
+  cloud1->width = 1;
+  cloud1->height = cloud1->points.size ();
+}
+
+void Extended4PCS::computeKeypoints (CloudPtr cloud,
+                                     CloudPtr& keypoints,
+                                     string type)
+{
+  KeyPointsInterface kpi (type);
+  kpi.setParams (keypoint_par);
+  kpi.setInputCloud (cloud);
+  kpi.compute ();
+  keypoints = kpi.getKeypoints ();
+  keypoints->width = 1;
+  keypoints->height = keypoints->points.size ();
+  cout << "# of keypoints = " << keypoints->points.size () << endl;
+}
 
 void Extended4PCS::debugQuadMatch ()
 {
@@ -310,7 +626,8 @@ void Extended4PCS::findTransformationParameters ()
   for (int i = 0; i < quadMatchTable.size (); i++) {
     QuadMatch& qmatch = quadMatchTable[i];
 
-    if (qmatch.ignoreMatch or qmatch.matches.size () == 0) {
+    if (qmatch.ignoreMatch or qmatch.matches.size () == 0
+        or qmatch.best_match == -1) {
       continue;
     }
 
@@ -682,7 +999,8 @@ void Extended4PCS::estimateRigidBodyTransformation (CloudPtr src, CloudPtr tgt,
 void Extended4PCS::findBestQuadMatch (QuadMatch& qmatch)
 {
 
-  if (qmatch.matches.size () == 0) {
+  if (qmatch.matches.size () == 0 or qmatch.matches.size () > median_count ) {
+    qmatch.ignoreMatch = true;
     return;
   }
   Quad& quad = *(qmatch.quad);
@@ -715,11 +1033,11 @@ void Extended4PCS::findBestQuadMatch (QuadMatch& qmatch)
     CloudPtr sampledsource (new Cloud);
     CloudPtr sampledtarget (new Cloud);
 
-    sampleCloud (source, 300, sampledsource);
-    sampleCloud (target, 300, sampledtarget);
+    sampleCloud (sourcefull, 300, sampledsource);
+    sampleCloud (targetfull, 300, sampledtarget);
 
-    //if ( (rms_cur = estimateError (sampledsource, sampledtarget, R, T) ) < rms_best) {
-    if ( (rms_cur = estimateError (source, target, R, T) ) < rms_best) {
+    if ( (rms_cur = estimateError (sampledsource, sampledtarget, R, T) ) < rms_best) {
+    //if ( (rms_cur = estimateError (source, target, R, T) ) < rms_best) {
       rms_best = rms_cur;
       qmatch.best_match = i;
       qmatch.least_error = rms_best;
@@ -772,7 +1090,7 @@ double Extended4PCS::estimateError (CloudPtr src, CloudPtr tgt,
                             Eigen::Matrix3f& R, Eigen::Vector3f& T)
 {
 	KdTree kdtree;		
-	kdtree.setInputCloud(tgt);
+	kdtree.setInputCloud (tgt);
 	int K = 1;
 	vector<int> ids (K);
 	vector<float> dist (K);
@@ -811,6 +1129,10 @@ void Extended4PCS::plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, dou
                               double green, double blue, int vp1, int vp2)
 {
 
+  if (qmatch.best_match == -1) {
+    return;
+  }
+
   ostringstream ostr;
 
   static int lineId = 98745;
@@ -832,7 +1154,7 @@ void Extended4PCS::plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, dou
 
   ostr.str ("");
   ostr << "intersect" << intersectId++;
-  viz->addSphere (pt, sphere_radius, 1, 1, 0, ostr.str ().c_str (), vp1);
+  viz->addSphere (pt, 2*sphere_radius, 1, 1, 0, ostr.str ().c_str (), vp1);
 
   ostr.str ("");
   ostr << "line" << lineId++;
@@ -845,6 +1167,9 @@ void Extended4PCS::plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, dou
 
   //for (int i = 0; i < qmatch.matches.size (); i++) 
   {
+    if (qmatch.best_match == -1) {
+      return;
+    }
     Quad& quad = qmatch.matches[qmatch.best_match];
     //Quad& quad = qmatch.matches[i];
 
@@ -873,7 +1198,7 @@ void Extended4PCS::plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, dou
 
     ostr.str ("");
     ostr << "intersect" << intersectId++;
-    viz->addSphere (intersection, sphere_radius, 1, 1, 0,
+    viz->addSphere (intersection, 2*sphere_radius, 1, 1, 0,
                     ostr.str ().c_str (), vp2);
 
     // a, b, c and d are the four points
@@ -935,6 +1260,13 @@ void Extended4PCS::findSimilarQuads ()
       Eigen::Vector3f e1_2 = b + r1 * (a-b);
       Point pt2 (e1_2 (0), e1_2 (1), e1_2 (2));
       intersections->points.push_back (pt2);
+    }
+
+    intersections->width = 1;
+    intersections->height = intersections->points.size ();
+
+    if (intersections->points.size () == 0) {
+      return;
     }
 
     //cout << "# of point pairs matching AB = " << r1_pts.size () << endl;
@@ -1328,13 +1660,13 @@ void Extended4PCS::selectQuads (vector <int>& plane_pts, int N)
       //cout << "Quad check failed ..\n";
     } while (tries++ < 10);
 
-    //if (tries == 11) {
-    //  cout << "<< Could not select quad " << i << " tries = " << tries << " >>\n";
-    //}
-    //else {
-      //cout << "<< Selected quad " << i << " Number of tries  = " << tries << " >> .. \n";
+    if (tries == 11) {
+      cout << "<< Could not select quad " << i << " tries = " << tries << " >>\n";
+    }
+    else {
+      cout << "<< Selected quad " << i << " Number of tries  = " << tries << " >> .. \n";
       cout << "<< Selected quad " << i << " >> .. \n";
-    //}
+    }
 
     //cout << "\nPairwise distances\n-----------------\n";
     //for (int i = 0; i < 4; i++) {

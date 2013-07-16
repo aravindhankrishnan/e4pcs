@@ -31,9 +31,12 @@ MESSAGE("PCL includes - ${PCL_INCLUDE_DIRS}")
 MESSAGE("PCL Definitions - ${PCL_DEFINITIONS}")
 
 
-add_executable (test_e4pcs test_e4pcs.cpp e4pcs.cpp io.cpp e4pcs.h typedefs.h io.h)
+add_executable (test_e4pcs test_e4pcs.cpp config.cpp e4pcs.cpp keypoints_interface.cpp keypoints_interface.h io.cpp
+    e4pcs.h typedefs.h io.h config.h)
 add_executable (ndt_test ndt_test.cpp io.cpp typedefs.h io.h)
-add_executable (icp_test icp_test.cpp io.cpp typedefs.h io.h)
+add_executable (icp_test icp_test.cpp io.cpp  typedefs.h io.h)
+add_executable (test_keypoint_interface test_keypoint_interface.cpp config.cpp keypoints_interface.cpp
+    keypoints_interface.h io.cpp typedefs.h io.h config.h)
 add_executable (region_growing_test region_growing_test.cpp io.cpp typedefs.h io.h)
 add_executable (icpnl_test icpnl_test.cpp io.cpp typedefs.h io.h)
 add_executable (test_sampling test_sampling.cpp io.cpp typedefs.h io.h)
@@ -45,6 +48,7 @@ add_executable (transform_cloud transform_cloud.cpp io.cpp typedefs.h io.h)
 target_link_libraries (test_e4pcs ${PCL_LIBRARIES})
 target_link_libraries (ndt_test ${PCL_LIBRARIES})
 target_link_libraries (icp_test ${PCL_LIBRARIES})
+target_link_libraries (test_keypoint_interface ${PCL_LIBRARIES})
 target_link_libraries (region_growing_test ${PCL_LIBRARIES})
 target_link_libraries (icpnl_test ${PCL_LIBRARIES})
 target_link_libraries (test_sampling ${PCL_LIBRARIES})

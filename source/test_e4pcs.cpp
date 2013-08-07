@@ -288,14 +288,22 @@ int main (int argc, char *argv[])
   //return 0;
 
 
-  Extended4PCS e4pcs (args->D, args->abcd_mindist, args->corr_max_range);
+  //Extended4PCS e4pcs (args->D, args->abcd_mindist, args->corr_max_range);
+  Extended4PCS e4pcs;
   e4pcs.setArgs (argc, argv);
   e4pcs.setSource (cloud1);
   e4pcs.setTarget (cloud2);
+  e4pcs.setCongruency (args->congruency);
   e4pcs.setSamplingType (args->sampling_type);
+  e4pcs.setOffset (args->offset);
+  e4pcs.setD (args->D);
+  e4pcs.setABCDMinDist (args->abcd_mindist);
+  e4pcs.setCorrMaxRange (args->corr_max_range);
   e4pcs.setVisualizer (p);
+  e4pcs.setVisualizationSphereRadius (args->sphere_radius);
   e4pcs.setNumQuads (args->num_quads);
   e4pcs.setKeypointParams (args->keypoint_par);
+  e4pcs.initParams ();
 
   if (args->sampling_type.find ("random") != string::npos) {
     e4pcs.setSamplingRatio1 (args->random_sampling_ratio1);
@@ -387,6 +395,9 @@ int main (int argc, char *argv[])
   BOOST_FOREACH (PCLVisualizer* p, V) {
     p->spin ();
   }
+
+  boost::shared_ptr <PCLVisualizer> keypointsviz = e4pcs.getKeypointsVisualizer();
+  keypointsviz->spin ();
 
   }
   catch (std::exception& e) {

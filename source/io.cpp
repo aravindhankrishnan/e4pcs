@@ -38,9 +38,9 @@ void readASCIIFile (const char* filename, CloudPtr cloud)
     cloud->points.push_back (Point (x, y, z));
     n++;
   }
-  cloud->height = n;
-  cloud->width = 1;
-  cout << "Loaded " << filename << " with " << cloud->height << " points ..\n";
+  cloud->width = n;
+  cloud->height = 1;
+  cout << "Loaded " << filename << " with " << cloud->size () << " points ..\n";
 }
 
 void writeASCIIFile (const char* filename, CloudPtr cloud)

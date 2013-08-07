@@ -212,6 +212,12 @@ int loadConfigFile (const char* filename)
       continue;
     }
 
+    if (keyword.compare ("congruency") == 0 ) {
+      cout << "Congruency = " << val << endl;
+      args->congruency = val;
+      continue;
+    }
+
     if (keyword.compare ("numquads") == 0 ) {
       cout << "Number of quads = " << val << endl;
       args->num_quads = atoi (val.c_str ());
@@ -378,6 +384,12 @@ int loadConfigFile (const char* filename)
     if (keyword.compare ("corr_max_range") == 0 ) {
       cout << "Correspondence max range = " << val << endl;
       args->corr_max_range = atof (val.c_str ());
+      continue;
+    }
+
+    if (keyword.compare ("offset") == 0 ) {
+      cout << "Offset = " << val << endl;
+      args->offset = atof (val.c_str ());
       continue;
     }
 

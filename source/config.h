@@ -22,11 +22,13 @@ struct InputParams
   string filetype2;
   string sampling_type;
   string keypoint_type;
+  string congruency;
   KeypointParamsPtr keypoint_par;
   float region_around_radius;
   float random_sampling_ratio1;
   float random_sampling_ratio2;
   float windowsize;
+  float offset;
   int num_quads;
   int vis_num_points;
 };

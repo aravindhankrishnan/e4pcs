@@ -4,6 +4,7 @@
 #include "keypoints_interface.h"
 
 #include <vector>
+#include <fstream>
 using namespace std;
 
 #include <pcl/visualization/pcl_visualizer.h>
@@ -26,12 +27,58 @@ struct Quad
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
+
+struct Pyramid
+{
+  int apex;
+  Quad base;
+  int pyramidId;
+};
+
+
 struct PointList
 {
   float len;
   vector <int> points;
 };
 
+
+struct PyramidMatch
+{
+  Pyramid* pyramid;
+
+  float ab_len;
+  float cd_len;
+  float base_apex_len[4];
+
+  // (r1_pts[i] & r1_pts[i+1)] are pairs that are of similar
+  // length to the pair (quad->q[0] & quad->q[1])
+  vector <int>* r1_pts;
+
+  // (r2_pts[i] & r2_pts[i+1)] are pairs that are of similar
+  // length to the pair (quad->q[2] & quad->q[3])
+  vector <int>* r2_pts;
+
+  // Kdtree object
+  KdTree kdtree;
+
+  // List of matching quads
+  vector <Pyramid> matches;
+
+  PyramidMatch ()
+  {
+    best_match = -1;
+    ignoreMatch = false;
+  }
+
+  int best_match;   // RMS error is computed for transformation between quad and matches[i]
+                    // Set to -1 when every RMS error is above a particular threshold
+
+  bool ignoreMatch; // Set when the quad is not on the dominant plane
+
+  double least_error;
+  int cnt_best;
+};
 
 struct QuadMatch
 {
@@ -91,6 +138,8 @@ class Extended4PCS
 
     int best_quad;
 
+    int best_pyramid;
+
     int vp1;
     int vp2;
 
@@ -101,13 +150,17 @@ class Extended4PCS
     CloudPtr targetfull;
 
     vector <int> plane_pts;
+    vector <int> non_plane_pts;
     vector <Quad> quads;
+    vector <Pyramid> pyramids;
 
     vector <QuadMatch> quadMatchTable;
+    vector <PyramidMatch> pyramidMatchTable;
     vector <PointList> pointListTable;
 
     E4PCSParams param;
 
+    string congruency;
     string sampling_type;
 
     double rms;
@@ -116,11 +169,18 @@ class Extended4PCS
 
     PCLVisualizer* pviz;
     vector <PCLVisualizer*> V;
+    boost::shared_ptr <PCLVisualizer> keypointsviz;
 
     float random_sampling_ratio1;
     float random_sampling_ratio2;
     float region_around_radius;
+    float offset;
+    float D;
+    float min_dist;
+    float corr_max_range;
     float windowsize;
+
+    float sphere_radius;
 
 
     KeypointParamsPtr keypoint_par;
@@ -133,10 +193,12 @@ class Extended4PCS
 
   public:
 
-    Extended4PCS (float D, float min_dist, float corr_max_range)
+    Extended4PCS ()
     {
-      float offset = 1;
+    }
 
+    void initParams ()
+    {
       if (fabs (D) < 1e-2) {
         D += offset;
       }
@@ -174,9 +236,19 @@ class Extended4PCS
 
     void setSource (CloudPtr src) { sourcefull = src; }
 
+    void setCongruency (string& str) { congruency = str; }
+
     void setTarget (CloudPtr tgt) { targetfull = tgt; }
 
     void setVisualizer (PCLVisualizer* v) { pviz = v; }
+
+    void setD (float d) { D = d; }
+
+    void setOffset (float o) { offset = o; }
+
+    void setABCDMinDist (float d) { min_dist = d; }
+
+    void setCorrMaxRange (float r) { corr_max_range = r; }
 
     void setNumQuads (int n) { num_quads = n; }
 
@@ -189,6 +261,19 @@ class Extended4PCS
     void setSamplingRatio2 (float ratio) { random_sampling_ratio2 = ratio; }
 
     void setWindowSize (float size) { windowsize = size; }
+
+    void setVisualizationSphereRadius (float rad) { sphere_radius = rad; }
+
+    bool findCongruentApex (PyramidMatch& pmatch, Pyramid& mquad, CloudPtr target);
+
+    void adjustPyramid2PlaneEqn (Eigen::Matrix3f& R, 
+                                Eigen::Vector4f& plane_eq, 
+                                Point& pt);
+
+    void find3PlaneIntersection (Eigen::Vector4f& plane_eq1,
+                             Eigen::Vector4f& plane_eq2,
+                             Eigen::Vector4f& plane_eq3,
+                             Eigen::Vector3f& e);
 
     void setRadiusOfRegionAroundKeypoint (float rad) { region_around_radius = rad; }
 
@@ -204,9 +289,13 @@ class Extended4PCS
 
     vector <PCLVisualizer*>& getVisualizers () { return V; }
 
-
+    boost::shared_ptr <PCLVisualizer> getKeypointsVisualizer () { return keypointsviz; }
 
   private:
+
+    void alignUsingQuads ();
+
+    void alignUsingPyramids ();
 
     void select3Points (CloudPtr cloud, int& a, int& b, int& c);
 
@@ -227,7 +316,11 @@ class Extended4PCS
     void selectMaxPlane ();
 
     void findPointsOnPlane (CloudPtr cloud, int a, int b,
-                        int c, vector <int>& pts);
+                            int c, vector <int>& plane_pts,
+                            vector <int>& non_plane_pts);
+
+    void findPlaneEquation (CloudPtr cloud, int a, int b, int c, 
+                        Eigen::Vector4f& eq);
 
     void computeKeypoints ( CloudPtr cloud,
                             CloudPtr& keypoints,
@@ -238,23 +331,50 @@ class Extended4PCS
 
     void selectQuads (vector <int>& plane_pts, int N);
 
+    void selectPyramids (vector <int>& plane_pts, int N);
+
+    void selectPyramids1 (int N);
+
     void selectOneQuad (Quad& quad, vector <int>& plane_pts);
+
+    void selectBase (Pyramid& pyramid, vector <int>& plane_pts);
+
+    void addApex (CloudPtr& cloud, Pyramid& pyramid, vector <int>& non_plane_pts,
+                  int K);
+
+    void addApex (CloudPtr& cloud, Pyramid& pyramid, 
+                  vector <int>& non_plane_pts, float radius);
 
     bool checkQuad (Quad& quad);
 
+    bool pyramidEdgeLengthCheck (PyramidMatch& pmatch, 
+                                 Pyramid& mpyramid);
+
+    bool pyramidApexBaseDistanceCheck (PyramidMatch& pmatch, 
+                                       Pyramid& mpyramid);
+
     void initializeQuadMatchTable ();
+
+    void initializePyramidMatchTable ();
 
     void insertToQuadMatchTable (float length, int i, int j);
 
+    void insertToPyramidMatchTable (float length, int i, int j);
+
     void findSimilarQuads ();
+
+    void findSimilarPyramids ();
 
     int findMatchingPoint (KdTree& kdtree, Point pt);
 
     void plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, double r,
                             double g, double b, int vp1, int vp2);
 
+    void plotMatchingPyramids (PCLVisualizer* viz, PyramidMatch& pmatch, double r,
+                            double g, double b, int vp1, int vp2);
+
     void displayPointCloud (PCLVisualizer* viz, CloudPtr cloud, int* color, char* name,
-                            int& viewport);
+                            int viewport=0);
 
     void findIntersection (CloudPtr cloud, int x1, int x2, 
                            int x3, int x4, Point& intersection);
@@ -262,6 +382,8 @@ class Extended4PCS
     bool angleCheck (Quad& quad, Quad& mquad);
 
     void findBestQuadMatch (QuadMatch& qmatch);
+
+    void findBestPyramidMatch (PyramidMatch& pmatch);
 
     void estimateRotation (CloudPtr src, CloudPtr tgt,
                                             Eigen::Matrix3f& trans_mat);
@@ -290,15 +412,25 @@ class Extended4PCS
 
     bool samePlaneCheck (Quad& one, Quad& two);
 
-    void findTransformationParameters ();
+    void findTransformationParametersFromQuad ();
+
+    void findTransformationParametersFromPyramid ();
 
     void sampleCloud (CloudPtr cloud, int N, CloudPtr sampledcloud);
 
-    void findMedianCount ();
+    void findMedianCountQuad ();
+
+    void findMedianCountPyramid ();
 
     void cleanup ();
 
     void debugQuadMatch ();
+
+    void debugPyramidMatch ();
+
+    void displaySourceAndTarget ();
+
+    ofstream logfile;
 
 
 };

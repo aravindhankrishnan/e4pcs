@@ -18,7 +18,8 @@ endif()
 
 set (UTILS_FOLDER /Volumes/WORKSPACE/projects)
 
-include_directories (/usr/local/include/opencv ${UTILS_FOLDER})
+include_directories (/usr/local/include/opencv /opt/local/include/eigen3/Eigen/src/ ${UTILS_FOLDER})
+#include_directories (/usr/local/include/opencv ${UTILS_FOLDER})
 include_directories(${PCL_INCLUDE_DIRS} /usr/local/include )
 
 link_directories (/usr/local/lib/)
@@ -39,6 +40,7 @@ add_executable (test_keypoint_interface test_keypoint_interface.cpp config.cpp k
     keypoints_interface.h io.cpp typedefs.h io.h config.h)
 add_executable (region_growing_test region_growing_test.cpp io.cpp typedefs.h io.h)
 add_executable (icpnl_test icpnl_test.cpp io.cpp typedefs.h io.h)
+add_executable (test_pyramid_congruency test_pyramid_congruency.cpp typedefs.h)
 add_executable (test_sampling test_sampling.cpp io.cpp typedefs.h io.h)
 add_executable (downsample downsample.cpp io.cpp io.h)
 add_executable (visualize_output visualize_output.cpp io.cpp typedefs.h io.h)
@@ -47,6 +49,7 @@ add_executable (transform_cloud transform_cloud.cpp io.cpp typedefs.h io.h)
 
 target_link_libraries (test_e4pcs ${PCL_LIBRARIES})
 target_link_libraries (ndt_test ${PCL_LIBRARIES})
+target_link_libraries (test_pyramid_congruency ${PCL_LIBRARIES})
 target_link_libraries (icp_test ${PCL_LIBRARIES})
 target_link_libraries (test_keypoint_interface ${PCL_LIBRARIES})
 target_link_libraries (region_growing_test ${PCL_LIBRARIES})

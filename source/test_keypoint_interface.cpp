@@ -10,6 +10,25 @@ using namespace std;
 
 using namespace pcl::visualization;
 
+
+void sampleCloud (CloudPtr cloud, int N, CloudPtr sampledcloud)
+{
+  if (cloud->points.size () <= N) {
+    pcl::copyPointCloud (*cloud, *sampledcloud);
+    sampledcloud->width = 1;
+    sampledcloud->height = sampledcloud->points.size ();
+  }
+  else {
+    srand (time (NULL));
+    for (int i = 0; i < N; i++) {
+      int k = rand () % cloud->points.size ();
+      sampledcloud->points.push_back (cloud->points[k]);
+    }
+    sampledcloud->height = 1;
+    sampledcloud->width = sampledcloud->points.size ();
+  }
+}
+
 int main (int argc, char *argv[])
 {
   if (argc < 2) {
@@ -38,7 +57,11 @@ int main (int argc, char *argv[])
   kpi.setKeyPointType (args->keypoint_type);
   kpi.setParams (args->keypoint_par);
 
-  kpi.setInputCloud (cloud);
+  CloudPtr sampledcloud (new Cloud);
+  sampleCloud (cloud, args->vis_num_points, sampledcloud);
+  cout << "# of points displayed = " << sampledcloud->points.size () << endl;
+
+  kpi.setInputCloud (sampledcloud);
   kpi.compute ();
   
   CloudPtr keypoints (new Cloud);
@@ -52,7 +75,8 @@ int main (int argc, char *argv[])
 
   int color[3] = {255, 255, 255};
   PointCloudColorHandlerCustom <Point> tgt_h1 (cloud, color[0], color[1], color[2]);
-  viz->addPointCloud (cloud, tgt_h1, "cloud");
+  //viz->addPointCloud (cloud, tgt_h1, "cloud");
+  viz->addPointCloud (sampledcloud, tgt_h1, "cloud");
   //viz->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 
   //                                        10, "cloud");
 
@@ -60,7 +84,7 @@ int main (int argc, char *argv[])
   PointCloudColorHandlerCustom <Point> tgt_h2 (keypoints, color[0], color[1], color[2]);
   viz->addPointCloud (keypoints, tgt_h2, "keypoints");
   viz->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 
-                                          6, "keypoints");
+                                          3, "keypoints");
 
   viz->spin ();
 

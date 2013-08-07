@@ -10,9 +10,14 @@ using namespace std;
 #include <pcl/visualization/pcl_visualizer.h>
 using namespace pcl::visualization;
 
-float dx = 566001.63;
-float dy = 3682196.04;
+//float dx = 566001.63;
+//float dy = 3682196.04;
 
+//float dx = 513780.071;
+//float dy = 3519794.27;
+
+float dx = 0.;
+float dy = 0.;
 
 void sampleCloud (CloudPtr cloud, int N, CloudPtr sampledcloud)
 {
@@ -36,16 +41,25 @@ void sampleCloud (CloudPtr cloud, int N, CloudPtr sampledcloud)
 int main (int argc, char *argv[])
 {
 
+  if (argc < 3) {
+    cout << "Enter arguments ..\n"
+            "\t1) Input cloud\n"
+            "\t2) Number of points to be sampled\n"
+            "\t3) Output cloud\n"
+            "\n";
+    return -1;
+  }
+
   CloudPtr cloud1 ( new Cloud );
 
   readASCIIFile (argv[1], cloud1);
 
   CloudPtr sampledcloud1 (new Cloud);
 
-  int numPoints = 100000;
+  int numPoints = atoi (argv[2]);
   sampleCloud (cloud1, numPoints, sampledcloud1);
 
-  writeASCIIFile (argv[2], sampledcloud1);
+  writeASCIIFile (argv[3], sampledcloud1);
 
   return 0;
 }

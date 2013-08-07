@@ -12,15 +12,13 @@
 #include <algorithm>
 #include <sstream>
 #include <limits>
+#include <iterator>
 
 using namespace std;
 
 #define foreach BOOST_FOREACH
 
 namespace E4PCS {
-
-float sphere_radius;
-
 
 void Extended4PCS::align ()
 {
@@ -54,8 +52,21 @@ void Extended4PCS::align ()
   displayPointCloud (pviz, source, C, (char *)"cloud7473", vp1);
   displayPointCloud (pviz, target, C, (char *)"cloud7474", vp2);
 
-  selectMaxPlane ();
+  //selectMaxPlane ();
 
+  //return ;
+
+
+  if (congruency.compare ("quad") == 0) {
+    alignUsingQuads ();
+  }
+  else if (congruency.compare ("pyramid") == 0) {
+    alignUsingPyramids ();
+  }
+}
+
+void Extended4PCS::alignUsingQuads ()
+{
   int N = num_quads;
   selectQuads (plane_pts, N);
 
@@ -115,7 +126,7 @@ void Extended4PCS::align ()
 
   cout << "\n";
 
-  findMedianCount ();
+  findMedianCountQuad ();
   cout << "MEDIAN COUNT = " << median_count << "\n\n";
 
   // FIDNING THE BEST MATCHING QUAD
@@ -129,44 +140,9 @@ void Extended4PCS::align ()
     cout << qmatch.best_match << "\tRMS error = " << qmatch.least_error << "\n";
   }
 
-  //for (int i = 0; i < quadMatchTable.size (); i++) {
-  //  if (quadMatchTable[i].best_match != -1) {
-  //    cout << "Best match for quad " << i+1 << " is " 
-  //      << quadMatchTable[i].best_match + 1 << " of "
-  //      << quadMatchTable[i].matches.size () << "\t"
-  //      << "Error is " << quadMatchTable[i].least_error << endl;
-  //    continue;
-  //  }
+  findTransformationParametersFromQuad ();
 
-  //  quadMatchTable[i].ignoreMatch = true;
-  //  cout << "Match for quad " << i+1 << " NOT FOUND\n";
-  //}
-
-  //cout << endl;
-
-  // among matching quads, select the ones on a plane
-  // All quads in the source cloud are on a plane, so 
-  // enforcing the same constraint
-  //if ( !filterMatchingQuads () ) {
-  //  cout << "\n\n\n";
-  //  cout << "**************** Selecting a NEW PLANE *****************\n\n";
-  //  cleanup ();
-  //  align ();
-  //  return;
-  //}
-
-  findTransformationParameters ();
-
-  //return true;
-
-  //int color[3] = {255, 255, 255};
-  //displayPointCloud (pviz, source, color, (char *) "cloud1", vp1);
-
-  ////color[0] = 0, color[1] = 0, color[2] = 0;
-  //displayPointCloud (pviz, target, color, (char *) "cloud2", vp2);
-
-
-  //debugQuadMatch ();
+  debugQuadMatch ();
 
   for (int i = 0; i < quadMatchTable.size (); i++) {
     double r = 0., g = 0., b = 0.;
@@ -185,33 +161,122 @@ void Extended4PCS::align ()
       plotMatchingQuads (pviz, quadMatchTable[i], r, g, b, vp1, vp2);
     }
   }
-
- // for (int i = 0; i < quadMatchTable.size (); i++) {
- //   Quad& quad = *(quadMatchTable[i].quad);
- //   if (quadMatchTable[i].ignoreMatch) {
- //     continue;
- //   }
-
- //   Quad& mquad = quadMatchTable[i].matches[quadMatchTable[i].best_match];
-
- //   //cout << "Angle between (" << source->points[quad.q[0]] << "," << quad.intersection.transpose ()
- //   //  << ") and (" << quad.intersection.transpose () << "," << source->points[quad.q[3]] << ") is "
- //   //  << quad.intersect_angle << endl;
-
-
- //   //cout << "Angle between (" << target->points[mquad.q[0]] << "," << mquad.intersection.transpose ()
- //   //  << ") and (" << mquad.intersection.transpose () << "," << target->points[mquad.q[3]] << ") is "
- //   //  << mquad.intersect_angle << endl;
- // }
-
 }
 
-//void displayPointCloud (PCLVisualizer* viz, CloudPtr cloud, int* color, 
-//                        char* name, int& viewport)
-//{
-//  PointCloudColorHandlerCustom <Point> tgt_h (cloud, color[0], color[1], color[2]);
-//  viz->addPointCloud (cloud, tgt_h, name, viewport);
-//}
+void Extended4PCS::alignUsingPyramids ()
+{
+  cout << "Aligning using pyramids ..\n";
+  int N = num_quads;
+
+  //selectPyramids (plane_pts, N);
+  selectPyramids1 (N);
+
+  cout << "\n\nSelected " << pyramids.size () << " pyramids in source cloud ..\n";
+
+  initializePyramidMatchTable ();
+
+  cout << "\n\nFinding matching point pairs ..\n";
+  utils::Timer timer ("seconds");
+  timer.tic ();
+
+  for (int i = 0; i < target->points.size (); i++) {
+    for (int j = i+1; j < target->points.size (); j++) {
+
+      float length = (target->points[i].getVector3fMap () - 
+                      target->points[j].getVector3fMap ()).norm ();
+
+      insertToPyramidMatchTable (length, i, j);
+    }
+  }
+
+  cout << "Time taken = " << timer.toc () << " seconds\n\n\n";
+
+  cout << "# entries in Point List table = " << pointListTable.size () << "\n\n";
+
+  cout << "\n\n";
+
+
+  if (pyramidMatchTable.size () == 0) {
+    cout << "No pyramids found with the given parameters .. Stopping ..\n";
+    return;
+  }
+    
+  cout << "<< PYRAMID TABLE >> \n-------------------------------------------------------\n";
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    PyramidMatch& pmatch = pyramidMatchTable[i];
+    cout << "Quad " << i+1 << " AB length = " << pmatch.ab_len << ",\t# point pairs = " << (*(pmatch.r1_pts)).size () / 2 << endl;
+    cout << "Quad " << i+1 << " CD length = " << pmatch.cd_len << ",\t# point pairs = " << (*(pmatch.r2_pts)).size () / 2 << endl;
+    cout << "-------------------------------------------------------\n";
+  }
+
+  findSimilarPyramids ();
+
+  bool emptyFlag = true;
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    PyramidMatch& pmatch = pyramidMatchTable[i];
+    cout << "Pyramid " << i+1 << " # of matching pyramids = " << pmatch.matches.size () << endl;
+    if (pmatch.matches.size ()) {
+      emptyFlag = false;
+    }
+  }
+
+  if (emptyFlag) {
+    cout << "\n\n <<< NO MATCHING PYRAMIDS FOUND. RELAX SOME PARAMETERS AND TRY AGAIN >>> ..\n";
+    return;
+  }
+
+  cout << "\n";
+
+  findMedianCountPyramid ();
+  cout << "MEDIAN COUNT = " << median_count << "\n\n";
+
+  // FIND THE BEST MATCHING PYRAMID
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    PyramidMatch& pmatch = pyramidMatchTable[i];
+    findBestPyramidMatch (pmatch);
+    if (pmatch.best_match == -1) {
+      continue;
+    }
+    cout << "Found best match for Pyramid " << i+1 << "\t";
+    cout << pmatch.best_match << "\tRMS error = " << pmatch.least_error << "\n";
+  }
+
+  findTransformationParametersFromPyramid ();
+
+  debugPyramidMatch ();
+
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    double r = 0., g = 0., b = 0.;
+    switch (i%3) {
+      case 0: r = 1; break;
+      case 1: g = 1; break;
+      case 2: b = 1; break;
+    }
+
+    // only plot quads on the dominant plane
+    //if (pyramidMatchTable[i].ignoreMatch) {
+    //  continue;
+    //}
+
+    if (i == best_pyramid) {
+      plotMatchingPyramids (pviz, pyramidMatchTable[i], r, g, b, vp1, vp2);
+    }
+  }
+
+  displaySourceAndTarget ();
+}
+
+void Extended4PCS::displaySourceAndTarget ()
+{
+
+  keypointsviz.reset (new PCLVisualizer (argc_, argv_ , "Keypoints display"));
+
+  int color[3] = {255, 0, 0};
+  displayPointCloud (keypointsviz.get (), source, color, "keypointssource");
+
+  color[0] = 0, color[1] = 255;
+  displayPointCloud (keypointsviz.get (), target, color, "keypointstarget");
+}
 
 void Extended4PCS::samplingRandom ()
 {
@@ -447,8 +512,23 @@ void Extended4PCS::partitionCloud (CloudPtr& cloud,
 	}
 }
 
+void Extended4PCS::findMedianCountPyramid ()
+{
+  vector <int> counts;
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    PyramidMatch& pmatch = pyramidMatchTable[i];
+    int count = pmatch.matches.size ();
+    if (count != 0) {
+      counts.push_back (count);
+    }
+  }
 
-void Extended4PCS::findMedianCount ()
+  sort (counts.begin (), counts.end (), std::less <int> ());
+  int mi =  (4./5) * counts.size ();
+  median_count = counts[mi];
+}
+
+void Extended4PCS::findMedianCountQuad ()
 {
   vector <int> counts;
   for (int i = 0; i < quadMatchTable.size (); i++) {
@@ -499,6 +579,107 @@ void Extended4PCS::computeKeypoints (CloudPtr cloud,
   cout << "# of keypoints = " << keypoints->points.size () << endl;
 }
 
+void Extended4PCS::debugPyramidMatch ()
+{
+  int validMatches = 0;
+
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    if (!pyramidMatchTable[i].ignoreMatch) {
+      validMatches++;
+    }
+  }
+
+  cout << "DEBUG :: # of valid matches = " << validMatches << endl;
+
+  int pyramidsPerVis = 1;
+  int n_vis = floor (validMatches / pyramidsPerVis);
+  if (validMatches % pyramidsPerVis) {
+    n_vis++;
+  }
+
+  cout << "DEBUG :: # of visualizers = " << n_vis << endl;
+
+  vector <int> vp (pyramidsPerVis * 2);
+  for (int i = 1; i <= pyramidsPerVis * 2; i++) {
+    vp.push_back (i);
+  }
+
+  int color[3] = {255, 255, 255};
+
+  static int cloud_id = 436488;
+  for (int i = 0; i < n_vis; i++) {
+    ostringstream ostr;
+    ostr << "Matching pyramids set " << i+1;
+    PCLVisualizer *v = new PCLVisualizer (argc_, argv_ , ostr.str ().c_str ());
+    char *name = NULL;
+
+    float steplen = 1. / pyramidsPerVis;
+    for (int k = 0; k < pyramidsPerVis; k++) {
+      v->createViewPort (0.0, k*steplen, 1./2, (k+1)*steplen, vp[2*k]);
+      ostr.str ("");
+      ostr << "cloud" << cloud_id++;
+      name = (char *)ostr.str ().c_str ();
+      displayPointCloud (v, source, color, name, vp[2*k]);
+
+      v->createViewPort (1./2, k*steplen, 1.0, (k+1)*steplen, vp[2*k+1]);
+      ostr.str ("");
+      ostr << "cloud" << cloud_id++;
+      name = (char *)ostr.str ().c_str ();
+      displayPointCloud (v, target, color, name, vp[2*k+1]);
+
+      //v->createViewPort (0.0, 1./3, 1./2, 2./3, vp[2]);
+      //ostr.str ("");
+      //ostr << "cloud" << cloud_id++;
+      //name = (char *)ostr.str ().c_str ();
+      //displayPointCloud (v, source, color, name, vp[2]);
+
+      //v->createViewPort (1./2, 1./3, 1., 2./3, vp[3]);
+      //ostr.str ("");
+      //ostr << "cloud" << cloud_id++;
+      //name = (char *)ostr.str ().c_str ();
+      //displayPointCloud (v, target, color, name, vp[3]);
+
+      //v->createViewPort (0.0, 2./3, 1./2, 1.0, vp[4]);
+      //ostr.str ("");
+      //ostr << "cloud" << cloud_id++;
+      //name = (char *)ostr.str ().c_str ();
+      //displayPointCloud (v, source, color, name, vp[4]);
+
+      //v->createViewPort (1./2, 2./3, 1.0, 1.0, vp[5]);
+      //ostr.str ("");
+      //ostr << "cloud" << cloud_id++;
+      //name = (char *)ostr.str ().c_str ();
+      //displayPointCloud (v, target, color, name, vp[5]);
+
+    }
+
+    v->setBackgroundColor (113.0/255, 113.0/255, 154.0/255);
+    V.push_back (v);
+  }
+
+  logfile.open ("pyramid-debug.txt");
+  int z = 0;
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    double r = 0., g = 0., b = 0.;
+    switch (i%3) {
+      case 0: r = 1; break;
+      case 1: g = 1; break;
+      case 2: b = 1; break;
+    }
+
+    if (pyramidMatchTable[i].ignoreMatch) {
+      continue;
+    }
+
+    int k = (int) (z / pyramidsPerVis);
+
+    cout << "z = " << z << " :: Choosing visualizer " << k << endl;
+
+    int q = z % pyramidsPerVis;
+    plotMatchingPyramids (V[k], pyramidMatchTable[i], r, g, b, vp[2*q], vp[2*q+1]);
+    z++;
+  }
+}
 void Extended4PCS::debugQuadMatch ()
 {
 
@@ -596,6 +777,7 @@ void Extended4PCS::debugQuadMatch ()
     cout << "z = " << z << " :: Choosing visualizer " << k << endl;
 
     int q = z % quadsPerVis;
+    cout << "Plotting matching quad " << i << endl;
     plotMatchingQuads (V[k], quadMatchTable[i], r, g, b, vp[2*q], vp[2*q+1]);
     z++;
   }
@@ -618,7 +800,74 @@ void Extended4PCS::cleanup ()
   quadMatchTable.clear ();
 }
 
-void Extended4PCS::findTransformationParameters ()
+void Extended4PCS::findTransformationParametersFromPyramid ()
+{
+  double best_error = numeric_limits <double>::max ();
+  int index = -1;
+
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    PyramidMatch& pmatch = pyramidMatchTable[i];
+
+    if (pmatch.ignoreMatch or pmatch.matches.size () == 0
+        or pmatch.best_match == -1) {
+      continue;
+    }
+
+    if (pmatch.least_error < best_error) {
+      index = i;
+      best_error = pmatch.least_error;
+    }
+  }
+  
+  if (index == -1) {
+    cout << "Couldn't find matching quads .. Stopping ..\n";
+    transform.setZero ();
+    transform.block <3, 3> (0, 0) = Eigen::Matrix3f::Identity ();
+    return;
+  }
+
+  best_pyramid = index;
+
+  cout << "\nChoosing pyramid " << index+1 << " for finding the "
+    "final transformation\n\n";
+
+  PyramidMatch& pmatch = pyramidMatchTable[best_pyramid];
+  CloudPtr cloud1 (new Cloud);
+  CloudPtr cloud2 (new Cloud);
+
+  Pyramid& p1 = *(pmatch.pyramid);
+  Pyramid& p2 = pmatch.matches[pmatch.best_match];
+
+  foreach (int& index, p1.base.q) {
+    cloud1->points.push_back (source->points[index]);
+  }
+  //cloud1->points.push_back (source->points[p1.apex]);
+  cloud1->width = 1;
+  cloud1->height = cloud1->points.size ();
+
+  foreach (int& index, p2.base.q) {
+    cloud2->points.push_back (target->points[index]);
+  }
+  //cloud2->points.push_back (target->points[p2.apex]);
+  cloud2->width = 1;
+  cloud2->height = cloud2->points.size ();
+
+  Eigen::Matrix3f R;
+  Eigen::Vector3f T;
+
+  estimateRigidBodyTransformation (cloud1, cloud2, R, T);
+
+  transform.block <3, 3> (0, 0) = R;
+  transform.block <3, 1> (0, 3) = T;
+
+  transform (3, 3) = 1.0;
+
+  cout << "\n---------- TRANSFORMATION ---------------\n"
+    << transform << "\n------------------------------------------\n\n";
+
+}
+
+void Extended4PCS::findTransformationParametersFromQuad ()
 {
   double best_error = numeric_limits <double>::max ();
   int index = -1;
@@ -638,7 +887,7 @@ void Extended4PCS::findTransformationParameters ()
   }
   
   if (index == -1) {
-    cout << "Couln't find matching quads .. Stopping ..\n";
+    cout << "Couldn't find matching quads .. Stopping ..\n";
     transform.setZero ();
     transform.block <3, 3> (0, 0) = Eigen::Matrix3f::Identity ();
     return;
@@ -996,6 +1245,63 @@ void Extended4PCS::estimateRigidBodyTransformation (CloudPtr src, CloudPtr tgt,
   estimateTranslation (src, tgt, R, T);
 }
 
+void Extended4PCS::findBestPyramidMatch (PyramidMatch& pmatch)
+{
+  //if (pmatch.matches.size () == 0 or pmatch.matches.size () > median_count ) {
+  //  pmatch.ignoreMatch = true;
+  //  return;
+  //}
+
+  Pyramid& pyramid = *(pmatch.pyramid);
+  CloudPtr cloud1 (new Cloud);
+  foreach (int& index, pyramid.base.q) {
+    cloud1->points.push_back (source->points[index]);
+  }
+  cloud1->points.push_back (source->points[pyramid.apex]);
+  cloud1->width = 1;
+  cloud1->height = cloud1->points.size ();
+
+  //cout << "best pyramid points 1 = " << cloud1->points.size () << endl;
+
+  double rms_best = numeric_limits <double>::max ();
+
+  //cout << "findBestQuadMatch Error : ";
+
+  for (int i = 0; i < pmatch.matches.size (); i++) {
+    Pyramid& match = pmatch.matches[i];
+    CloudPtr cloud2 (new Cloud);
+    foreach (int& index, match.base.q) {
+      cloud2->points.push_back (target->points[index]);
+    }
+    cloud2->points.push_back (target->points[match.apex]);
+    cloud2->width = 1;
+    cloud2->height = cloud2->points.size ();
+
+    //cout << "best pyramid points 2 = " << cloud2->points.size () << endl;
+
+    Eigen::Matrix3f R;
+    Eigen::Vector3f T;
+    estimateRigidBodyTransformation (cloud1, cloud2, R, T);
+    //cout << "best pyramid , estimated rigid body transformation ..\n";
+    
+    double rms_cur = 0;
+
+    CloudPtr sampledsource (new Cloud);
+    CloudPtr sampledtarget (new Cloud);
+
+    sampleCloud (sourcefull, 300, sampledsource);
+    sampleCloud (targetfull, 300, sampledtarget);
+
+    if ( (rms_cur = estimateError (sampledsource, sampledtarget, R, T) ) < rms_best) {
+    //if ( (rms_cur = estimateError (source, target, R, T) ) < rms_best) {
+      rms_best = rms_cur;
+      pmatch.best_match = i;
+      pmatch.least_error = rms_best;
+    }
+  }
+  cout << endl;
+}
+
 void Extended4PCS::findBestQuadMatch (QuadMatch& qmatch)
 {
 
@@ -1119,11 +1425,193 @@ double Extended4PCS::estimateError (CloudPtr src, CloudPtr tgt,
 
   error /= count;
 
+  // Adding penalty if there are not enough corresponding points
+  if (count < 0.8 * src->points.size ()) {
+    error += 9999;
+  }
+
 	//cout << "Number of correspondences found = " << count << 
   //  "\tTotal error = " << error << endl;
 
   return error;
 }
+
+void Extended4PCS::plotMatchingPyramids (PCLVisualizer* viz, PyramidMatch& pmatch, double red,
+                              double green, double blue, int vp1, int vp2)
+{
+
+  //if (pmatch.best_match == -1) {
+  //  return;
+  //}
+
+  ostringstream ostr;
+
+  static int lineId = 39745;
+  static int sphereId = 12445;
+
+  Pyramid& pyramid = *(pmatch.pyramid);
+  Quad& quad = pyramid.base;
+  for (int k = 0; k <4; k++) {
+    ostr.str ("");
+    ostr << "sphere" << sphereId++;
+    viz->addSphere (source->points[quad.q[k]], sphere_radius, 
+                    red, green, blue, ostr.str ().c_str (), vp1);
+  }
+  ostr.str ("");
+  ostr << "sphere" << sphereId++;
+  viz->addSphere (source->points[pyramid.apex], 2*sphere_radius, 
+      1, 0, 1, ostr.str ().c_str (), vp1);
+
+  Eigen::Vector3f a = source->points[quad.q[0]].getVector3fMap ();
+  Eigen::Vector3f b = source->points[quad.q[1]].getVector3fMap ();
+  Eigen::Vector3f c = source->points[quad.q[2]].getVector3fMap ();
+  Eigen::Vector3f d = source->points[quad.q[3]].getVector3fMap ();
+
+  static int intersectId = 13726;
+  
+  Eigen::Vector3f e = a + quad.r1 * (b - a);
+  Point pt (e (0), e (1), e (2));
+
+  Eigen::Vector3f te = c + quad.r2 * (d - c);
+
+  if ( (e-te).norm () > 1e-2) {
+    cout << "(e-te).norm () = " << (e-te).norm () << endl;
+    //throw std::runtime_error ("\nIntersection ratio doesn't match ..\n\n");
+  }
+
+  ostr.str ("");
+  ostr << "intersect" << intersectId++;
+  viz->addSphere (pt, 2*sphere_radius, 1, 1, 0, ostr.str ().c_str (), vp1);
+
+  ostr.str ("");
+  ostr << "line" << lineId++;
+  viz->addLine (source->points[quad.q[0]], source->points[quad.q[1]], 
+                1, 1, 0, ostr.str ().c_str (), vp1);
+
+  ostr.str ("");
+  ostr << "line" << lineId++;
+  viz->addLine (source->points[quad.q[0]], source->points[quad.q[2]], 
+                 0, 1, 1, ostr.str ().c_str (), vp1);
+
+  ostr.str ("");
+  ostr << "line" << lineId++;
+  viz->addLine (source->points[quad.q[0]], source->points[quad.q[3]], 
+                 0, 1, 1, ostr.str ().c_str (), vp1);
+
+  ostr.str ("");
+  ostr << "line" << lineId++;
+  viz->addLine (source->points[quad.q[1]], source->points[quad.q[2]], 
+                 0, 1, 1, ostr.str ().c_str (), vp1);
+
+  ostr.str ("");
+  ostr << "line" << lineId++;
+  viz->addLine (source->points[quad.q[1]], source->points[quad.q[3]], 
+                 0, 1, 1, ostr.str ().c_str (), vp1);
+
+  ostr.str ("");
+  ostr << "line" << lineId++;
+  viz->addLine (source->points[quad.q[2]], source->points[quad.q[3]], 
+                 1, 1, 0, ostr.str ().c_str (), vp1);
+
+  cout << "APEX - CORNER LENGTHS :: ";
+  for (int i = 0; i < 4; i++) {
+    ostr.str ("");
+    ostr << "line" << lineId++;
+    viz->addLine (source->points[quad.q[i]], source->points[pyramid.apex], 
+        0, 1, 1, ostr.str ().c_str (), vp1);
+    cout << (source->points[quad.q[i]].getVector3fMap () - 
+             source->points[pyramid.apex].getVector3fMap ()).norm () << "\t";
+    if (pmatch.best_match != -1) {
+      logfile << source->points[quad.q[i]].getVector3fMap ().transpose () << " ";
+    }
+  }
+  if (pmatch.best_match != -1) {
+    logfile << source->points[pyramid.apex].getVector3fMap ().transpose () << " ";
+  }
+  cout << endl;
+
+  //for (int i = 0; i < pmatch.matches.size (); i++) 
+  {
+    Pyramid& mpyramid = pmatch.matches[pmatch.best_match];
+
+    if (pmatch.best_match == -1) {
+      return;
+    }
+
+    Quad& mquad = mpyramid.base;
+    for (int k = 0; k < 4; k++) {
+      ostr.str ("");
+      ostr << "sphere" << sphereId++;
+      viz->addSphere (target->points[mquad.q[k]], sphere_radius, 
+          red, green, blue, ostr.str ().c_str (), vp2);
+    }
+    ostr.str ("");
+    ostr << "sphere" << sphereId++;
+    viz->addSphere (target->points[mpyramid.apex], 2*sphere_radius, 
+        1, 0, 1, ostr.str ().c_str (), vp2);
+
+    Eigen::Vector3f a = target->points[mquad.q[0]].getVector3fMap ();
+    Eigen::Vector3f b = target->points[mquad.q[1]].getVector3fMap ();
+
+    Eigen::Vector3f e = a + mquad.r1 * (b - a);
+    Point pt (e (0), e (1), e (2));
+
+    ostr.str ("");
+    ostr << "intersect" << intersectId++;
+    viz->addSphere (pt, 2*sphere_radius, 1, 1, 0, ostr.str ().c_str (), vp2);
+
+    ostr.str ("");
+    ostr << "line" << lineId++;
+    viz->addLine (target->points[mquad.q[0]], target->points[mquad.q[1]], 
+        1, 1, 0, ostr.str ().c_str (), vp2);
+
+    ostr.str ("");
+    ostr << "line" << lineId++;
+    viz->addLine (target->points[mquad.q[0]], target->points[mquad.q[2]], 
+        0, 1, 1, ostr.str ().c_str (), vp2);
+
+    ostr.str ("");
+    ostr << "line" << lineId++;
+    viz->addLine (target->points[mquad.q[0]], target->points[mquad.q[3]], 
+        0, 1, 1, ostr.str ().c_str (), vp2);
+
+    ostr.str ("");
+    ostr << "line" << lineId++;
+    viz->addLine (target->points[mquad.q[1]], target->points[mquad.q[2]], 
+        0, 1, 1, ostr.str ().c_str (), vp2);
+
+    ostr.str ("");
+    ostr << "line" << lineId++;
+    viz->addLine (target->points[mquad.q[1]], target->points[mquad.q[3]], 
+        0, 1, 1, ostr.str ().c_str (), vp2);
+
+    ostr.str ("");
+    ostr << "line" << lineId++;
+    viz->addLine (target->points[mquad.q[2]], target->points[mquad.q[3]], 
+        1, 1, 0, ostr.str ().c_str (), vp2);
+
+    cout << "CONGRUENT APEX - CORNER LENGTHS :: ";
+    for (int i = 0; i < 4; i++) {
+      ostr.str ("");
+      ostr << "line" << lineId++;
+      viz->addLine (target->points[mquad.q[i]], target->points[mpyramid.apex], 
+          0, 1, 1, ostr.str ().c_str (), vp2);
+      cout << (target->points[mquad.q[i]].getVector3fMap () - 
+               target->points[mpyramid.apex].getVector3fMap ()).norm () << "\t";
+      logfile << target->points[mquad.q[i]].getVector3fMap ().transpose () << " ";
+    }
+    logfile << target->points[mpyramid.apex].getVector3fMap ().transpose () << "\n";
+    logfile.flush ();
+    if (pyramidEdgeLengthCheck (pmatch, mpyramid)) {
+      cout << "Edge length check passed ..\n";
+    }
+    else {
+      cout << "Edge length check failed ..\n";
+    }
+    cout << "\n\n";
+  }
+}
+
 
 void Extended4PCS::plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, double red,
                               double green, double blue, int vp1, int vp2)
@@ -1147,9 +1635,17 @@ void Extended4PCS::plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, dou
 
   Eigen::Vector3f a = source->points[quad.q[0]].getVector3fMap ();
   Eigen::Vector3f b = source->points[quad.q[1]].getVector3fMap ();
+  Eigen::Vector3f c = source->points[quad.q[2]].getVector3fMap ();
+  Eigen::Vector3f d = source->points[quad.q[3]].getVector3fMap ();
 
   static int intersectId = 1;
   Eigen::Vector3f e = a + quad.r1 * (b - a);
+  Eigen::Vector3f te = c + quad.r2 * (d - c);
+
+  if ( (e-te).norm () > 1e-2) {
+    cout << "(e-te).norm () = " << (e-te).norm () << endl;
+    //throw std::runtime_error ("\nIntersection ratio doesn't match ..\n\n");
+  }
   Point pt (e (0), e (1), e (2));
 
   ostr.str ("");
@@ -1200,34 +1696,496 @@ void Extended4PCS::plotMatchingQuads (PCLVisualizer* viz, QuadMatch& qmatch, dou
     ostr << "intersect" << intersectId++;
     viz->addSphere (intersection, 2*sphere_radius, 1, 1, 0,
                     ostr.str ().c_str (), vp2);
-
-    // a, b, c and d are the four points
-    //Eigen::Vector3f a = target->points[x1].getVector3fMap ();
-    //Eigen::Vector3f b = target->points[x2].getVector3fMap ();
-    //Eigen::Vector3f c = target->points[x3].getVector3fMap ();
-    //Eigen::Vector3f d = target->points[x4].getVector3fMap ();
-
-    //float r1 = (a-e).norm () / (a-b).norm ();
-    //float r2 = (c-e).norm () / (c-d).norm ();
-
-    //cout << " --------\n";
-    //cout << "r1 = " << qmatch.quad->r1 << " " << r1 << endl;
-    //cout << "r2 = " << qmatch.quad->r2 << " " << r2 << endl;
-    //cout << " --------\n";
   }
 }
 
 void Extended4PCS::displayPointCloud (PCLVisualizer* viz, CloudPtr cloud, int* color, 
-                                      char* name, int& viewport)
+                                      char* name, int viewport)
 {
   PointCloudColorHandlerCustom <Point> tgt_h (cloud, color[0], color[1], color[2]);
   viz->addPointCloud (cloud, tgt_h, name, viewport);
 }
 
+bool Extended4PCS::findCongruentApex (PyramidMatch& pmatch, Pyramid& mpyramid, CloudPtr target) 
+{
+  Pyramid& pyramid = *(pmatch.pyramid);
+  Eigen::Vector4f  plane_eq1;
+  Eigen::Vector4f  plane_eq2;
+  Eigen::Vector4f  plane_eq3;
+
+  findPlaneEquation (source, pyramid.base.q[0], pyramid.base.q[2], pyramid.apex, plane_eq1);
+  findPlaneEquation (source, pyramid.base.q[1], pyramid.base.q[2], pyramid.apex, plane_eq2);
+  findPlaneEquation (source, pyramid.base.q[0], pyramid.base.q[3], pyramid.apex, plane_eq3);
+
+  CloudPtr src (new Cloud);
+  CloudPtr tgt (new Cloud);
+
+  for (int i = 0; i < 4; i++) {
+    src->points.push_back (source->points[pyramid.base.q[i]]);
+  }
+  src->width = 1;
+  src->height = src->points.size ();
+
+  for (int i = 0; i < 4; i++) {
+    tgt->points.push_back (target->points[mpyramid.base.q[i]]);
+  }
+  tgt->width = 1;
+  tgt->height = tgt->points.size ();
+
+  Eigen::Matrix3f R;
+  estimateRotation (src, tgt, R);
+
+  adjustPyramid2PlaneEqn (R, plane_eq1, target->points[mpyramid.base.q[0]]);
+  adjustPyramid2PlaneEqn (R, plane_eq2, target->points[mpyramid.base.q[1]]);
+  adjustPyramid2PlaneEqn (R, plane_eq3, target->points[mpyramid.base.q[0]]);
+
+  Eigen::Vector3f e;
+  find3PlaneIntersection (plane_eq1, plane_eq2, plane_eq3, e);
+
+  Point pt (e (0), e (1), e (2));
+
+  KdTreePtr tree (new KdTree);
+  tree->setInputCloud (target);
+
+  int K = 1;
+  vector <int> ids (K);
+  vector <float> dists (K);
+
+  fill (ids.begin (), ids.end (), -1);
+  fill (dists.begin (), dists.end (), 0.);
+
+  if (tree->nearestKSearch (pt, K, ids, dists) > 0) {
+    if (dists[0] < param.length_similarity_threshold*2) {
+      mpyramid.apex = ids[0];
+    }
+    else {
+      return false;
+    }
+  }
+  else {
+    return false;
+  }
+
+  if ( pyramidEdgeLengthCheck (pmatch, mpyramid) and
+       pyramidApexBaseDistanceCheck (pmatch, mpyramid) ) {
+    return true;
+  }
+
+  return false;
+}
+
+void Extended4PCS::find3PlaneIntersection (Eigen::Vector4f& plane_eq1,
+                             Eigen::Vector4f& plane_eq2,
+                             Eigen::Vector4f& plane_eq3,
+                             Eigen::Vector3f& e)
+{
+  // Refer to Eq 8 in http://mathworld.wolfram.com/Plane-PlaneIntersection.html
+  Eigen::Vector3f n1 = plane_eq1.block <3, 1> (0, 0);
+  Eigen::Vector3f n2 = plane_eq2.block <3, 1> (0, 0);
+  Eigen::Vector3f n3 = plane_eq3.block <3, 1> (0, 0);
+
+  float x1 = -plane_eq1 (3);
+  float x2 = -plane_eq2 (3);
+  float x3 = -plane_eq3 (3);
+
+  cout << "\n";
+  cout << "Normal 1 = " << n1.transpose () << endl;
+  cout << "Normal 2 = " << n2.transpose () << endl;
+  cout << "Normal 3 = " << n3.transpose () << endl;
+
+  Eigen::Matrix3f mat;
+  mat.row (0) = n1;
+  mat.row (1) = n2;
+  mat.row (2) = n3;
+
+  float K = mat.determinant ();
+  
+  cout << "\nDeterminant = " << K << endl;
+
+  e.setZero ();
+  e = (1./K) * (x1 * (n2.cross (n3)) +
+                x2 * (n3.cross (n1)) +
+                x3 * (n1.cross (n2)));
+  cout << "\nIntersection is " << e.transpose () << endl;
+
+}
+
+void Extended4PCS::adjustPyramid2PlaneEqn (Eigen::Matrix3f& R, 
+                                          Eigen::Vector4f& plane_eq, 
+                                          Point& pt)
+{
+  plane_eq.block <3, 1> (0, 0) = R * plane_eq.block <3, 1> (0, 0);
+  plane_eq (3) = -pt.getVector3fMap ().dot (plane_eq.block <3, 1> (0, 0));
+}
+
+void Extended4PCS::findSimilarPyramids ()
+{
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    cout << "\n[[[ ----  Finding matching pyramid for Pyramid " 
+      << i+1 << " --- ]]]\n";
+    PyramidMatch& pmatch = pyramidMatchTable[i];
+
+    float radius = (source->points[pmatch.pyramid->apex].getVector3fMap () - 
+                    pmatch.pyramid->base.intersection).norm ();
+
+    float D = param.length_similarity_threshold*3;
+    
+    KdTree& kdtree = pmatch.kdtree;
+    Quad& quad  = pmatch.pyramid->base;
+    float r1 (quad.r1);
+    float r2 (quad.r2);
+
+    vector <int>& r1_pts = *(pmatch.r1_pts);
+
+    //  Creating a point cloud containing r1 intersections
+    //  A KdTree is then created for this point cloud
+    CloudPtr intersections (new Cloud);
+
+    for (int i = 0; i < r1_pts.size (); i += 2) {
+      Eigen::Vector3f a = target->points[r1_pts[i]].getVector3fMap ();
+      Eigen::Vector3f b = target->points[r1_pts[i+1]].getVector3fMap ();
+
+      if ( ( (a-b).norm () - pmatch.ab_len)  > param.length_similarity_threshold){
+        //cout << "*** Point pairs NOT MATCHING AB length criteria ..\n";
+      }
+      else {
+        //cout << "*** Point pairs MATCHING AB length criteria ..\n";
+      }
+
+      Eigen::Vector3f e1_1 = a + r1 * (b-a);
+      Point pt1 (e1_1 (0), e1_1 (1), e1_1 (2));
+      intersections->points.push_back (pt1);
+
+
+      Eigen::Vector3f e1_2 = b + r1 * (a-b);
+      Point pt2 (e1_2 (0), e1_2 (1), e1_2 (2));
+      intersections->points.push_back (pt2);
+    }
+
+    intersections->width = 1;
+    intersections->height = intersections->points.size ();
+
+    if (intersections->points.size () == 0) {
+      return;
+    }
+
+    //cout << "# of point pairs matching AB = " << r1_pts.size () << endl;
+    kdtree.setInputCloud (intersections);
+    //cout << "# of r1 intersections = " << intersections->points.size () << endl;
+
+
+    vector <int>& r2_pts = *(pmatch.r2_pts);
+
+    for (int i = 0; i < r2_pts.size (); i += 2) {
+      Eigen::Vector3f a = target->points[r2_pts[i]].getVector3fMap ();
+      Eigen::Vector3f b = target->points[r2_pts[i+1]].getVector3fMap ();
+
+      if ( ( (a-b).norm () - pmatch.cd_len)  > param.length_similarity_threshold) {
+        //cout << "*** Point pairs NOT MATCHING CD length criteria ..\n";
+      }
+      else {
+        //cout << "*** Point pairs MATCHING CD length criteria ..\n";
+      }
+
+      Eigen::Vector3f e2_1 = a + r2 * (b-a);
+      Point pt1 (e2_1 (0), e2_1 (1), e2_1 (2));
+
+      int index = findMatchingPoint (kdtree, pt1); // returns index from cloud created in the above loop
+      if (index != -1) {
+        if ( (index % 2) == 0) {
+          // Matching quad pairs are {r2_pts[i], r2_pts[i+1], r1_pts[index], r1_pts[index+1]}
+          // and { quad.q[0], quad.q[1], quad.q[2], quad.q[3] }
+          Quad mquad;
+          mquad.q[0] = r1_pts[index];
+          mquad.q[1] = r1_pts[index+1];
+          mquad.q[2] = r2_pts[i];
+          mquad.q[3] = r2_pts[i+1];
+
+          if (angleCheck (quad, mquad)) {
+
+            Pyramid mpyramid;
+            mquad.r1 = r1;
+            mquad.r2 = r2;
+            mpyramid.base = mquad;
+
+            if (findCongruentApex (pmatch, mpyramid, target)) {
+              pmatch.matches.push_back (mpyramid);
+              cout << "\t<< Pyramid apex check PASSED >> ..\n";
+            }
+            else {
+              cout << "\t<< Pyramid apex check FAILED >> ..\n";
+            }
+
+            //vector <int> pl_pts;
+            //vector <int> npl_pts;
+
+            //findPointsOnPlane (target, mquad.q[0], mquad.q[1], 
+            //    mquad.q[2], pl_pts, npl_pts);
+
+            ////foreach (int& index, npl_pts) {
+            //for (int index = 0; index < target->points.size (); index++) {
+            //  Pyramid mpyramid;
+            //  mquad.r1 = r1;
+            //  mquad.r2 = r2;
+
+            //  mpyramid.base = mquad;
+            //  mpyramid.apex = index;
+            //  cout << "\t<< Base check PASSED >> ..\n";
+            //  if (pyramidEdgeLengthCheck (pmatch, mpyramid)) {
+            //    pmatch.matches.push_back (mpyramid);
+            //    cout << "\t<< Pyramid apex check PASSED >> ..\n";
+            //  }
+            //  else {
+            //    cout << "\t<< Pyramid apex check FAILED >> ..\n";
+            //  }
+            //}
+          }
+          else {
+            cout << "\n<<< Base check failed >> ..\n";
+          }
+        }
+        else {
+          // Matching quad pairs are {r2_pts[i], r2_pts[i+1], r1_pts[index], r1_pts[index-1]}
+          // and { quad.q[0], quad.q[1], quad.q[2], quad.q[3] }
+          Quad mquad;
+          mquad.q[0] = r1_pts[index];
+          mquad.q[1] = r1_pts[index-1];
+          mquad.q[2] = r2_pts[i];
+          mquad.q[3] = r2_pts[i+1];
+
+          if (angleCheck (quad, mquad)) {
+            Pyramid mpyramid;
+            mquad.r1 = r1;
+            mquad.r2 = r2;
+            mpyramid.base = mquad;
+
+            if (findCongruentApex (pmatch, mpyramid, target)) {
+              pmatch.matches.push_back (mpyramid);
+              cout << "\t<< Pyramid apex check PASSED >> ..\n";
+            }
+            else {
+              cout << "\t<< Pyramid apex check FAILED >> ..\n";
+            }
+
+            //vector <int> pl_pts;
+            //vector <int> npl_pts;
+
+            //findPointsOnPlane (target, mquad.q[0], mquad.q[1], 
+            //    mquad.q[2], pl_pts, npl_pts);
+
+            ////foreach (int& index, npl_pts) {
+            //for (int index = 0; index < target->points.size (); index++) {
+            //  Pyramid mpyramid;
+            //  mquad.r1 = r1;
+            //  mquad.r2 = r2;
+
+            //  mpyramid.base = mquad;
+            //  mpyramid.apex = index;
+            //  cout << "\t<< Base check PASSED >> ..\n";
+            //  if (pyramidEdgeLengthCheck (pmatch, mpyramid)) {
+            //    pmatch.matches.push_back (mpyramid);
+            //    cout << "\t<< Pyramid apex check PASSED >> ..\n";
+            //  }
+            //  else {
+            //    cout << "\t<< Pyramid apex check FAILED >> ..\n";
+            //  }
+            //}
+          }
+          else {
+            cout << "\t<< Base check failed >> ..\n";
+          }
+        }
+      }
+      else {
+        //cout << "\t<< Intersection not found for ratio r1 >> ..\n";
+      }
+
+      Eigen::Vector3f e2_2 = b + r2 * (a-b);
+      Point pt2 (e2_2 (0), e2_2 (1), e2_2 (2));
+
+      index = findMatchingPoint (kdtree, pt2);
+      if (index != -1) {
+        if ( (index % 2) == 0) {
+          // Matching quad pairs are (r2_pts[i+1], r2_pts[i], r1_pts[index], r1_pts[index+1])
+          // and { quad.q[0], quad.q[1], quad.q[2], quad.q[3] }
+
+          Quad mquad;
+          mquad.q[0] = r1_pts[index];
+          mquad.q[1] = r1_pts[index+1];
+          mquad.q[2] = r2_pts[i+1];
+          mquad.q[3] = r2_pts[i];
+          //cout << "Matching quads " << " ( " << quad->q[0] << " " << quad->q[1] 
+          //  << " " << quad->q[2] << " " << quad->q[3] << " ) ( " <<
+          //  mquad.q[0] << " " << mquad.q[1] << " " << mquad.q[2] << " " << mquad.q[3] << ")\n";
+
+          if (angleCheck (quad, mquad)) {
+            Pyramid mpyramid;
+            mquad.r1 = r1;
+            mquad.r2 = r2;
+            mpyramid.base = mquad;
+
+            if (findCongruentApex (pmatch, mpyramid, target)) {
+              pmatch.matches.push_back (mpyramid);
+              cout << "\t<< Pyramid apex check PASSED >> ..\n";
+            }
+            else {
+              cout << "\t<< Pyramid apex check FAILED >> ..\n";
+            }
+
+            //vector <int> pl_pts;
+            //vector <int> npl_pts;
+
+            //findPointsOnPlane (target, mquad.q[0], mquad.q[1], 
+            //    mquad.q[2], pl_pts, npl_pts);
+
+            ////foreach (int& index, npl_pts) {
+            //for (int index = 0; index < target->points.size (); index++) {
+            //  Pyramid mpyramid;
+            //  mquad.r1 = r1;
+            //  mquad.r2 = r2;
+
+            //  mpyramid.base = mquad;
+            //  mpyramid.apex = index;
+            //  cout << "\t<< Base check PASSED >> ..\n";
+            //  if (pyramidEdgeLengthCheck (pmatch, mpyramid)) {
+            //    pmatch.matches.push_back (mpyramid);
+            //    cout << "\t<< Pyramid apex check PASSED >> ..\n";
+            //  }
+            //  else {
+            //    cout << "\t<< Pyramid apex check FAILED >> ..\n";
+            //  }
+            //}
+          }
+          else {
+            cout << "\t<< Base check failed >> ..\n";
+          }
+        }
+        else {
+          // Matching quad pairs are (r2_pts[i+1], r2_pts[i], r1_pts[index], r1_pts[index-1])
+          // and { quad.q[0], quad.q[1], quad.q[2], quad.q[3] }
+          
+          Quad mquad;
+          mquad.q[0] = r1_pts[index];
+          mquad.q[1] = r1_pts[index-1];
+          mquad.q[2] = r2_pts[i+1];
+          mquad.q[3] = r2_pts[i];
+          //cout << "Matching quads " << " ( " << quad->q[0] << " " << quad->q[1] 
+          //  << " " << quad->q[2] << " " << quad->q[3] << " ) ( " <<
+          //  mquad.q[0] << " " << mquad.q[1] << " " << mquad.q[2] << " " << mquad.q[3] << ")\n";
+
+          if (angleCheck (quad, mquad)) {
+            Pyramid mpyramid;
+            mquad.r1 = r1;
+            mquad.r2 = r2;
+            mpyramid.base = mquad;
+
+            if (findCongruentApex (pmatch, mpyramid, target)) {
+              pmatch.matches.push_back (mpyramid);
+              cout << "\t<< Pyramid apex check PASSED >> ..\n";
+            }
+            else {
+              cout << "\t<< Pyramid apex check FAILED >> ..\n";
+            }
+
+            //vector <int> pl_pts;
+            //vector <int> npl_pts;
+
+            //findPointsOnPlane (target, mquad.q[0], mquad.q[1], 
+            //    mquad.q[2], pl_pts, npl_pts);
+
+            ////foreach (int& index, npl_pts) {
+            //for (int index = 0; index < target->points.size (); index++) {
+            //  Pyramid mpyramid;
+            //  mquad.r1 = r1;
+            //  mquad.r2 = r2;
+
+            //  mpyramid.base = mquad;
+            //  mpyramid.apex = index;
+            //  cout << "\t<< Base check PASSED >> ..\n";
+            //  if (pyramidEdgeLengthCheck (pmatch, mpyramid)) {
+            //    pmatch.matches.push_back (mpyramid);
+            //    cout << "\t<< Pyramid apex check PASSED >> ..\n";
+            //  }
+            //  else {
+            //    cout << "\t<< Pyramid apex check FAILED >> ..\n";
+            //  }
+            //}
+          }
+          else {
+            cout << "\t<< Base check failed >> ..\n";
+          }
+        }
+      }
+      else {
+        //cout << "\t<< Intersection not found for ratio r2 >> ..\n";
+      }
+    }
+  }
+}
+bool Extended4PCS::pyramidApexBaseDistanceCheck (PyramidMatch& pmatch, 
+                                                 Pyramid& mpyramid)
+{
+  Pyramid& pyramid = *(pmatch.pyramid);
+  Eigen::Vector4f plane_eq1;
+  plane_eq1.setZero ();
+  findPlaneEquation (source, pyramid.base.q[0], pyramid.base.q[1], pyramid.base.q[2], plane_eq1);
+
+  Eigen::Vector4f plane_eq2;
+  plane_eq2.setZero ();
+  findPlaneEquation (target, mpyramid.base.q[0], mpyramid.base.q[1], mpyramid.base.q[2], plane_eq2);
+
+  Eigen::Vector4f apex1 = source->points[pyramid.apex].getVector4fMap ();
+  Eigen::Vector4f apex2 = target->points[mpyramid.apex].getVector4fMap ();
+
+  float d1 = fabs (plane_eq1.dot (apex1));
+  float d2 = fabs (plane_eq2.dot (apex2));
+
+  cout << "\n\nApex base distance = (" << d1 << " " << d2 << ")\n";
+
+  if (fabs (d1 - d2) < param.length_similarity_threshold) {
+    return true;
+  }
+
+  return false;
+}
+
+bool Extended4PCS::pyramidEdgeLengthCheck (PyramidMatch& pmatch, 
+                                           Pyramid& mpyramid)
+{
+  bool status = true;
+  Quad& quad = mpyramid.base;
+
+  Eigen::Vector3f a = target->points[quad.q[0]].getVector3fMap ();
+  Eigen::Vector3f b = target->points[quad.q[1]].getVector3fMap ();
+  Eigen::Vector3f c = target->points[quad.q[2]].getVector3fMap ();
+  Eigen::Vector3f d = target->points[quad.q[3]].getVector3fMap ();
+  Eigen::Vector3f e = target->points[mpyramid.apex].getVector3fMap ();
+
+  float base_apex_len[4];
+
+  base_apex_len[0] = (a-e).norm ();
+  base_apex_len[1] = (b-e).norm ();
+  base_apex_len[2] = (c-e).norm ();
+  base_apex_len[3] = (d-e).norm ();
+
+  cout << "Pyramid Edge Length Check ::  ";
+
+  for (int i = 0; i < 4; i++) {
+    cout << "( " << pmatch.base_apex_len[i] << " , " << base_apex_len[i] << " )  ";
+    if (fabs (base_apex_len[i] - pmatch.base_apex_len[i]) 
+        > param.length_similarity_threshold * 2) {
+      status = false;
+    }
+  }
+  cout << endl;
+  return status;
+}
 
 void Extended4PCS::findSimilarQuads ()
 {
   for (int i = 0; i < quadMatchTable.size (); i++) {
+    cout << "\n[[[ ----  Finding matching quad for Quad " 
+      << i+1 << " --- ]]]\n";
     QuadMatch& qmatch = quadMatchTable[i];
     
     KdTree& kdtree = qmatch.kdtree;
@@ -1305,6 +2263,11 @@ void Extended4PCS::findSimilarQuads ()
           //  mquad.q[0] << " " << mquad.q[1] << " " << mquad.q[2] << " " << mquad.q[3] << ")\n";
 
           if (angleCheck (*quad, mquad)) {
+            vector <int> pl_pts;
+            vector <int> npl_pts;
+            findPointsOnPlane (target, mquad.q[0], mquad.q[1], 
+                mquad.q[2], pl_pts, npl_pts);
+            cout << "# of non plane points = " << npl_pts.size () << endl;
             qmatch.matches.push_back (mquad);
           }
         }
@@ -1321,6 +2284,11 @@ void Extended4PCS::findSimilarQuads ()
           //  mquad.q[0] << " " << mquad.q[1] << " " << mquad.q[2] << " " << mquad.q[3] << ")\n";
 
           if (angleCheck (*quad, mquad)) {
+            vector <int> pl_pts;
+            vector <int> npl_pts;
+            findPointsOnPlane (target, mquad.q[0], mquad.q[1], 
+                mquad.q[2], pl_pts, npl_pts);
+            cout << "# of non plane points = " << npl_pts.size () << endl;
             qmatch.matches.push_back (mquad);
           }
         }
@@ -1345,6 +2313,11 @@ void Extended4PCS::findSimilarQuads ()
           //  mquad.q[0] << " " << mquad.q[1] << " " << mquad.q[2] << " " << mquad.q[3] << ")\n";
 
           if (angleCheck (*quad, mquad)) {
+            vector <int> pl_pts;
+            vector <int> npl_pts;
+            findPointsOnPlane (target, mquad.q[0], mquad.q[1], 
+                mquad.q[2], pl_pts, npl_pts);
+            cout << "# of non plane points = " << npl_pts.size () << endl;
             qmatch.matches.push_back (mquad);
           }
         }
@@ -1362,6 +2335,11 @@ void Extended4PCS::findSimilarQuads ()
           //  mquad.q[0] << " " << mquad.q[1] << " " << mquad.q[2] << " " << mquad.q[3] << ")\n";
 
           if (angleCheck (*quad, mquad)) {
+            vector <int> pl_pts;
+            vector <int> npl_pts;
+            findPointsOnPlane (target, mquad.q[0], mquad.q[1], 
+                mquad.q[2], pl_pts, npl_pts);
+            cout << "# of non plane points = " << npl_pts.size () << endl;
             qmatch.matches.push_back (mquad);
           }
         }
@@ -1423,23 +2401,109 @@ int Extended4PCS::findMatchingPoint (KdTree& kdtree, Point pt)
   return -1;
 }
 
+void Extended4PCS::insertToPyramidMatchTable (float length, int p, int q)
+{
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    PyramidMatch& pmatch = pyramidMatchTable[i];
+    if ( fabs (pmatch.ab_len - length) < param.length_similarity_threshold) {
+      pmatch.r1_pts->push_back (p);
+      pmatch.r1_pts->push_back (q);
+      break;
+    }
+    if ( fabs (pmatch.cd_len - length) < param.length_similarity_threshold) {
+      pmatch.r2_pts->push_back (p);
+      pmatch.r2_pts->push_back (q);
+      break;
+    }
+  }
+}
+
 void Extended4PCS::insertToQuadMatchTable (float length, int p, int q)
 {
   for (int i = 0; i < quadMatchTable.size (); i++) {
     QuadMatch& qmatch = quadMatchTable[i];
-    //length within 1 meter of the pair in the quad
     if ( fabs (qmatch.ab_len - length) < param.length_similarity_threshold) {
       qmatch.r1_pts->push_back (p);
       qmatch.r1_pts->push_back (q);
       break;
     }
-    //length within 1 meter of pair in the quad
     if ( fabs (qmatch.cd_len - length) < param.length_similarity_threshold) {
       qmatch.r2_pts->push_back (p);
       qmatch.r2_pts->push_back (q);
       break;
     }
   }
+}
+
+void Extended4PCS::initializePyramidMatchTable ()
+{
+  pyramidMatchTable.resize (pyramids.size ());
+
+  for (int i = 0; i < pyramids.size (); i++) {
+
+    pyramidMatchTable[i].pyramid = &pyramids[i];
+    Quad& quad = pyramids[i].base;
+
+    Eigen::Vector3f a = source->points[quad.q[0]].getVector3fMap ();
+    Eigen::Vector3f b = source->points[quad.q[1]].getVector3fMap ();
+    Eigen::Vector3f c = source->points[quad.q[2]].getVector3fMap ();
+    Eigen::Vector3f d = source->points[quad.q[3]].getVector3fMap ();
+    Eigen::Vector3f e = source->points[pyramids[i].apex].getVector3fMap ();
+
+    pyramidMatchTable[i].ab_len = (a-b).norm ();
+    pyramidMatchTable[i].cd_len = (c-d).norm ();
+    pyramidMatchTable[i].base_apex_len[0] = (a-e).norm ();
+    pyramidMatchTable[i].base_apex_len[1] = (b-e).norm ();
+    pyramidMatchTable[i].base_apex_len[2] = (c-e).norm ();
+    pyramidMatchTable[i].base_apex_len[3] = (d-e).norm ();
+
+    bool found = false;
+    vector <PointList>::iterator itr = pointListTable.begin ();
+    for (; itr != pointListTable.end (); itr++) {
+      if ( fabs (itr->len - pyramidMatchTable[i].ab_len) < 
+          param.length_similarity_threshold) {
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      PointList pl;
+      pl.len = pyramidMatchTable[i].ab_len;
+      pointListTable.push_back (pl);
+    }
+
+    found = false;
+    itr = pointListTable.begin ();
+    for (; itr != pointListTable.end (); itr++) {
+      if ( fabs (itr->len - pyramidMatchTable[i].cd_len) < 
+          param.length_similarity_threshold) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      PointList pl;
+      pl.len = pyramidMatchTable[i].cd_len;
+      pointListTable.push_back (pl);
+    }
+  }
+
+  for (int i = 0; i < pyramidMatchTable.size (); i++) {
+    vector <PointList>::iterator itr = pointListTable.begin ();
+    for (; itr != pointListTable.end (); itr++) {
+      // point within 1 m
+      if ( fabs (itr->len - pyramidMatchTable[i].ab_len) < 
+          param.length_similarity_threshold) {
+        pyramidMatchTable[i].r1_pts = &(itr->points);
+      }
+      if ( fabs (itr->len - pyramidMatchTable[i].cd_len) < 
+          param.length_similarity_threshold) {
+        pyramidMatchTable[i].r2_pts = &(itr->points);
+      }
+    }
+  }
+
 }
 
 void Extended4PCS::initializeQuadMatchTable ()
@@ -1538,6 +2602,143 @@ void Extended4PCS::selectOneQuad (Quad& quad, vector <int>& plane_pts)
 }
 
 
+void Extended4PCS::selectBase (Pyramid& pyramid, vector <int>& plane_pts)
+{
+  int z = 0;
+
+  Quad& quad = pyramid.base;
+
+  while (true) {
+
+    if (z == 4) {
+      break;
+    }
+
+    int k = rand () % plane_pts.size ();
+
+    bool too_close = false;
+    for (int p = 0; p < z; p++) {
+      Point p1 = source->points[plane_pts[k]];
+      Point p2 = source->points[quad.q[p]];
+      if ( (p1.getVector3fMap () - p2.getVector3fMap ()).norm () < param.min_dist) {
+        too_close = true;
+        break;
+      }
+    }
+    if (too_close) {
+      continue;
+    }
+
+    quad.q[z++] = plane_pts[k];
+
+    //cout << "z = " << z << endl;
+  }
+}
+
+void Extended4PCS::addApex (CloudPtr& cloud, Pyramid& pyramid, 
+                            vector <int>& non_plane_pts, float radius)
+{
+  cout << "Adding Apex .. # of non plane points = " << non_plane_pts.size () << "\n";
+  Quad& quad = pyramid.base;
+  Point pt;
+  //cout << "cloud size = " << cloud->points.size () << endl;
+  findIntersection (cloud, quad.q[0], quad.q[1], quad.q[2], quad.q[3], pt);
+
+  pcl::IndicesPtr indices (new vector <int>);
+  //indices->resize (non_plane_pts.size ());
+  copy (non_plane_pts.begin (), non_plane_pts.end (), back_inserter (*indices));
+
+  KdTreePtr tree (new KdTree);
+  tree->setInputCloud (cloud, indices);
+
+  vector <int> ids;
+  vector <float> dists;
+
+  fill (ids.begin (), ids.end (), -1);
+  fill (dists.begin (), dists.end (), 0.);
+
+  Eigen::Vector3f a = cloud->points[quad.q[0]].getVector3fMap ();
+  Eigen::Vector3f b = cloud->points[quad.q[1]].getVector3fMap ();
+  Eigen::Vector3f c = cloud->points[quad.q[2]].getVector3fMap ();
+  Eigen::Vector3f d = cloud->points[quad.q[3]].getVector3fMap ();
+
+  float ab_len = (a-b).norm ();
+  float cd_len = (c-d).norm ();
+
+  Eigen::Vector4f plane_eq;
+  plane_eq.setZero ();
+  findPlaneEquation (cloud, quad.q[0], quad.q[1], quad.q[2], plane_eq);
+
+  if (tree->radiusSearch (pt, radius, ids, dists) > 0) {
+    int index = -1;
+    float pd = numeric_limits <float>::min (); // perpendicular disatance
+    foreach (int& i, ids) {
+      Eigen::Vector4f q = cloud->points[i].getVector4fMap ();
+      float l = fabs (plane_eq.dot (q));
+      //cout << "( " << pd << " , " << l << " ) ";
+      if (l > pd) {
+        pd = l;
+        //cout << "changing pd ";
+        index = i;
+      }
+    }
+    cout << "Longest perpendicular distance = " << pd << endl;
+    pyramid.apex = index;
+  }
+}
+
+void Extended4PCS::addApex (CloudPtr& cloud, Pyramid& pyramid, 
+                            vector <int>& non_plane_pts, int K)
+{
+  cout << "Adding Apex .. # of non plane points = " << non_plane_pts.size () << "\n";
+  Quad& quad = pyramid.base;
+  Point pt;
+  //cout << "cloud size = " << cloud->points.size () << endl;
+  findIntersection (cloud, quad.q[0], quad.q[1], quad.q[2], quad.q[3], pt);
+
+  pcl::IndicesPtr indices (new vector <int>);
+  //indices->resize (non_plane_pts.size ());
+  copy (non_plane_pts.begin (), non_plane_pts.end (), back_inserter (*indices));
+
+  KdTreePtr tree (new KdTree);
+  tree->setInputCloud (cloud, indices);
+
+  vector <int> ids (K);
+  vector <float> dists (K);
+
+  fill (ids.begin (), ids.end (), -1);
+  fill (dists.begin (), dists.end (), 0.);
+
+  Eigen::Vector3f a = cloud->points[quad.q[0]].getVector3fMap ();
+  Eigen::Vector3f b = cloud->points[quad.q[1]].getVector3fMap ();
+  Eigen::Vector3f c = cloud->points[quad.q[2]].getVector3fMap ();
+  Eigen::Vector3f d = cloud->points[quad.q[3]].getVector3fMap ();
+
+  float ab_len = (a-b).norm ();
+  float cd_len = (c-d).norm ();
+
+  Eigen::Vector4f plane_eq;
+  plane_eq.setZero ();
+  findPlaneEquation (cloud, quad.q[0], quad.q[1], quad.q[2], plane_eq);
+
+  if (tree->nearestKSearch (pt, K, ids, dists) > 0) {
+    int index = -1;
+    float pd = numeric_limits <float>::min (); // perpendicular disatance
+    foreach (int& i, ids) {
+      Eigen::Vector4f q = cloud->points[i].getVector4fMap ();
+      float l = fabs (plane_eq.dot (q));
+      //cout << "( " << pd << " , " << l << " ) ";
+      if (l > pd) {
+        pd = l;
+        //cout << "changing pd ";
+        index = i;
+      }
+    }
+    cout << "Longest perpendicular distance = " << pd << endl;
+    pyramid.apex = index;
+  }
+}
+
 void Extended4PCS::findIntersection (CloudPtr cloud, int x1, int x2, 
                               int x3, int x4, Point& intersection)
 {
@@ -1557,6 +2758,8 @@ void Extended4PCS::findIntersection (CloudPtr cloud, int x1, int x2,
   Eigen::Vector3f e = cloud->points[x1].getVector3fMap () + 
                       a * (cb.dot (ab) / ab.dot (ab));
 
+  //cout << "Intersection = " << e.transpose () << endl;
+
   intersection.x = e (0);
   intersection.y = e (1);
   intersection.z = e (2);
@@ -1575,8 +2778,6 @@ bool Extended4PCS::checkQuad (Quad& quad)
   Point intersection;
   findIntersection (source, x1, x2, x3, x4, intersection);
 
-
-
   Eigen::Vector3f e = intersection.getVector3fMap ();
 
   // a, b, c and d are the four points
@@ -1584,7 +2785,6 @@ bool Extended4PCS::checkQuad (Quad& quad)
   Eigen::Vector3f b = source->points[x2].getVector3fMap ();
   Eigen::Vector3f c = source->points[x3].getVector3fMap ();
   Eigen::Vector3f d = source->points[x4].getVector3fMap ();
-
 
   float length = (a-b).norm ();
   // e should be on the line segment ab, so |e-a| or |e-b| 
@@ -1608,23 +2808,122 @@ bool Extended4PCS::checkQuad (Quad& quad)
   quad.r1 = r1;
   quad.r2 = r2;
 
-  //cout << "r1 = " << r1 << " r2 = " << r2 << endl;
-
-  //static int lineid = 5000;
-  //ostringstream ostr;
-  //ostr << "line" << lineid++;
-  //viz->addLine (source->points[x1], source->points[x2], 1, 1, 0, ostr.str ().c_str ());
-  //ostr.str ("");
-  //ostr << "line" << lineid++;
-  //viz->addLine (source->points[x3], source->points[x4], 1, 1, 0, ostr.str ().c_str ());
-  //Point pi (e (0), e (1), e (2));
-
-  //static int line_intersect_id = 4500;
-  //ostr.str ("");
-  //ostr << "lineintersect" << line_intersect_id++;
-  //viz->addSphere (pi, sphere_radius, 1, 1, 0, ostr.str ().c_str ());
-
   return true;
+}
+
+void Extended4PCS::selectPyramids1 (int N)
+{
+  int pyramidId = 1;
+  int K = 10;
+
+  Pyramid pyramid;
+  // Make sure that atleast one pyramid gets selected ..
+  do {
+
+    int ta = 0, tb = 0, tc = 0;
+    select3Points (source, ta, tb, tc);
+    plane_pts.clear ();
+    non_plane_pts.clear ();
+
+    findPointsOnPlane (source, ta, tb, tc, plane_pts, non_plane_pts);
+    selectBase (pyramid, plane_pts);
+
+    if (checkQuad (pyramid.base)) {
+      cout << "Selected base ..\n";
+      addApex (source, pyramid, non_plane_pts, K);
+      cout << "Added apex ..\n";
+      pyramid.pyramidId = pyramidId++;
+      pyramids.push_back (pyramid);
+      break;
+    }
+    //cout << "Pyramid base check failed ..\n";
+  } while (true);
+
+
+  cout << "\n<< Selected Pyramid 1 >> ..\n";
+  // Select the rest N-1 pyramids
+  for (int i = 2; i <= N; i++) { // Select N pyramids
+
+    Pyramid pyramid;
+
+    int tries = 1;
+    do {
+      int ta = 0, tb = 0, tc = 0;
+      select3Points (source, ta, tb, tc);
+      plane_pts.clear ();
+      non_plane_pts.clear ();
+
+      findPointsOnPlane (source, ta, tb, tc, plane_pts, non_plane_pts);
+      selectBase (pyramid, plane_pts);
+
+      if (checkQuad (pyramid.base)) {
+        cout << "Selected base ..\n";
+        addApex (source, pyramid, non_plane_pts, K);
+        cout << "Added apex ..\n";
+        pyramid.pyramidId = pyramidId++;
+        pyramids.push_back (pyramid);
+        break;
+      }
+    } while (tries++ < 10);
+
+    if (tries == 11) {
+      cout << "<< Could not select pyramid " << i << " tries = " << tries << " >>\n";
+    }
+    else {
+      cout << "<< Selected pyramid " << i << " Number of tries  = " << tries << " >> .. \n";
+      cout << "<< Selected pyramid " << i << " >> .. \n";
+    }
+  }
+
+}
+
+void Extended4PCS::selectPyramids (vector <int>& plane_pts, int N)
+{
+  int pyramidId = 1;
+  int K = 10;
+
+  Pyramid pyramid;
+  // Make sure that atleast one pyramid gets selected ..
+  do {
+    selectBase (pyramid, plane_pts);
+    if (checkQuad (pyramid.base)) {
+      cout << "Selected base ..\n";
+      addApex (source, pyramid, non_plane_pts, K);
+      cout << "Added apex ..\n";
+      pyramid.pyramidId = pyramidId++;
+      pyramids.push_back (pyramid);
+      break;
+    }
+    //cout << "Pyramid base check failed ..\n";
+  } while (true);
+
+  cout << "\n<< Selected Pyramid 1 >> ..\n";
+  // Select the rest N-1 pyramids
+  for (int i = 2; i <= N; i++) { // Select N pyramids
+
+    Pyramid pyramid;
+
+    int tries = 1;
+    do {
+      selectBase (pyramid, plane_pts);
+      if (checkQuad (pyramid.base)) {
+        cout << "Selected base ..\n";
+        addApex (source, pyramid, non_plane_pts, K);
+        cout << "Added apex ..\n";
+        pyramid.pyramidId = pyramidId++;
+        pyramids.push_back (pyramid);
+        break;
+      }
+    } while (tries++ < 10);
+
+    if (tries == 11) {
+      cout << "<< Could not select pyramid " << i << " tries = " << tries << " >>\n";
+    }
+    else {
+      cout << "<< Selected pyramid " << i << " Number of tries  = " << tries << " >> .. \n";
+      cout << "<< Selected pyramid " << i << " >> .. \n";
+    }
+  }
 }
 
 void Extended4PCS::selectQuads (vector <int>& plane_pts, int N)
@@ -1690,16 +2989,16 @@ void Extended4PCS::selectMaxPlane ()
   int z = 0;
   int max_pts = 0;
 
-
   srand (time (NULL));
 
-  cout << "FINDING THE BEST PLANE :: ";
+  //cout << "FINDING THE BEST PLANE :: ";
   while (z++ < param.random_tries) {
     int ta = 0, tb = 0, tc = 0;
     select3Points (source, ta, tb, tc);
     vector <int> pts;
-    findPointsOnPlane (source, ta, tb, tc, pts);
-    cout << pts.size () << " ";
+    vector <int> n_pts;
+    findPointsOnPlane (source, ta, tb, tc, pts, n_pts);
+    //cout << pts.size () << " ";
 
     if (pts.size () > max_pts) {
       max_pts = pts.size ();
@@ -1709,91 +3008,124 @@ void Extended4PCS::selectMaxPlane ()
   }
   cout << endl;
 
-  findPointsOnPlane (source, a, b, c, plane_pts);
+  findPointsOnPlane (source, a, b, c, this->plane_pts, this->non_plane_pts);
   cout << "# of points on the plane = " << plane_pts.size () << endl;
+  cout << "# of points not the plane = " << non_plane_pts.size () << endl;
+
+
+  Eigen::Vector4f p_eq;
+  findPlaneEquation (source, a, b, c, p_eq);
+
+  float pd = numeric_limits <float>::min (); // perpendicular disatance
+  for (int i = 0; i < source->points.size (); i++) {
+    Eigen::Vector4f q = source->points[i].getVector4fMap ();
+    float l = fabs (p_eq.dot (q));
+    if (l > pd) {
+      pd = l;
+    }
+  }
+  cout << "Longest perpendicular distance from Max plane = " << pd << endl;
+}
+
+void Extended4PCS::findPlaneEquation (CloudPtr cloud, int a, int b, int c, 
+                        Eigen::Vector4f& eq)
+{
+  Point pa = cloud->points[a];
+  Point pb = cloud->points[b];
+  Point pc = cloud->points[c];
+
+  Eigen::Vector3f centroid;
+  centroid.setZero ();
+
+  centroid (0) = (pa.x + pb.x + pc.x ) / 3.0;
+  centroid (1) = (pa.y + pb.y + pc.y ) / 3.0;
+  centroid (2) = (pa.z + pb.z + pc.z ) / 3.0;
+
+  Eigen::Matrix3f covariance;
+  covariance.setZero ();
+
+  Eigen::Vector3f V;
+  V.setZero ();
+  V = (pa.getVector3fMap () - centroid) ;
+  covariance += (V * V.transpose ());
+
+  V.setZero ();
+  V = (pb.getVector3fMap () - centroid);
+  covariance += (V * V.transpose ());
+
+  V.setZero ();
+  V = (pc.getVector3fMap () - centroid);
+  covariance += (V * V.transpose ());
+
+
+  Eigen::EigenSolver <Eigen::Matrix3f> es (covariance);
+  //cout << "The eigen values are " << es.eigenvalues () << endl;
+  //cout << "\n\n\n" << endl;
+
+  Eigen::Vector3d eigenvalues;
+  eigenvalues.setZero ();
+  pcl::eigen33 (covariance, eigenvalues);
+  //cout << "The eigen values are " << eigenvalues.transpose () << endl << endl;
+
+  Eigen::Vector3f eigenvector1;
+  eigenvector1.setZero ();
+  pcl::computeCorrespondingEigenVector (covariance, eigenvalues [2], eigenvector1);
+
+  Eigen::Vector3f eigenvector2;
+  eigenvector2.setZero ();
+  pcl::computeCorrespondingEigenVector (covariance, eigenvalues [1], eigenvector2);
+
+  Eigen::Vector3f eigenvector3;
+  eigenvector3.setZero ();
+  pcl::computeCorrespondingEigenVector (covariance, eigenvalues [0], eigenvector3);
+
+  //cout << "Eigen values = " << eigenvalues[0] << " " << eigenvalues[1] << " " << eigenvalues[2] << endl;
+
+  float A = eigenvector3 (0);
+  float B = eigenvector3 (1);
+  float C = eigenvector3 (2);
+  float D = - (A*centroid (0) + B*centroid (1) + C*centroid (2));
+
+  eq.block <3,1> (0, 0) = eigenvector3;
+  eq (3) = -(centroid.dot (eigenvector3));
 }
 
 void Extended4PCS::findPointsOnPlane (CloudPtr cloud, int a, int b,
-                              int c,  vector <int>& pts)
+                                      int c, vector <int>& plane_pts,
+                                      vector <int>& non_plane_pts)
 {
-    Point pa = cloud->points[a];
-    Point pb = cloud->points[b];
-    Point pc = cloud->points[c];
+  plane_pts.clear ();
+  non_plane_pts.clear ();
 
-    Eigen::Vector3f centroid;
-    centroid.setZero ();
+  Eigen::Vector4f plane_eq;
+  plane_eq.setZero ();
 
-    centroid (0) = (pa.x + pb.x + pc.x ) / 3.0;
-    centroid (1) = (pa.y + pb.y + pc.y ) / 3.0;
-    centroid (2) = (pa.z + pb.z + pc.z ) / 3.0;
-    
-    Eigen::Matrix3f covariance;
-    covariance.setZero ();
+  findPlaneEquation (cloud, a, b, c, plane_eq);
+  float A = plane_eq (0);
+  float B = plane_eq (1);
+  float C = plane_eq (2);
+  float D = plane_eq (3);
 
-    Eigen::Vector3f V;
-    V.setZero ();
-    V = (pa.getVector3fMap () - centroid) ;
-    covariance += (V * V.transpose ());
+  plane_pts.push_back (a), plane_pts.push_back (b), plane_pts.push_back (c);
 
-    V.setZero ();
-    V = (pb.getVector3fMap () - centroid);
-    covariance += (V * V.transpose ());
+  for (int i = 0; i < cloud->points.size (); i++) {
 
-    V.setZero ();
-    V = (pc.getVector3fMap () - centroid);
-    covariance += (V * V.transpose ());
-
-
-    Eigen::EigenSolver <Eigen::Matrix3f> es (covariance);
-    //cout << "The eigen values are " << es.eigenvalues () << endl;
-    //cout << "\n\n\n" << endl;
-
-    Eigen::Vector3d eigenvalues;
-    eigenvalues.setZero ();
-    pcl::eigen33 (covariance, eigenvalues);
-    //cout << "The eigen values are " << eigenvalues.transpose () << endl << endl;
-
-    Eigen::Vector3f eigenvector1;
-    eigenvector1.setZero ();
-    pcl::computeCorrespondingEigenVector (covariance, eigenvalues [2], eigenvector1);
-
-    Eigen::Vector3f eigenvector2;
-    eigenvector2.setZero ();
-    pcl::computeCorrespondingEigenVector (covariance, eigenvalues [1], eigenvector2);
-
-    Eigen::Vector3f eigenvector3;
-    eigenvector3.setZero ();
-    pcl::computeCorrespondingEigenVector (covariance, eigenvalues [0], eigenvector3);
-
-    //cout << "Eigen values = " << eigenvalues[0] << " " << eigenvalues[1] << " " << eigenvalues[2] << endl;
-
-    float A = eigenvector3 (0);
-    float B = eigenvector3 (1);
-    float C = eigenvector3 (2);
-    float D = - (A*centroid (0) + B*centroid (1) + C*centroid (2));
-    //cout << "Plane equation = (" << A << " " << B << " " << C << " " << D << ")" << endl;
-    
-    pts.push_back (a), pts.push_back (b), pts.push_back (c);
-
-    for (int i = 0; i < cloud->points.size (); i++) {
-
-      if (i == a || i == b || i == c) {
-        continue;
-      }
-
-      float x = cloud->points[i].x;
-      float y = cloud->points[i].y;
-      float z = cloud->points[i].z;
-
-      float residue = fabs (A*x + B*y + C*z + D);
-      if ( residue < param.plane_fit_threshold) {
-        pts.push_back (i);
-        //cout << "residue = " << residue << endl;
-      }
+    if (i == a || i == b || i == c) {
+      continue;
     }
 
-    //cout << "# of points = " << cloud->points.size () << endl;
-    //cout << "# of points on the plane = " << pts.size () << endl;
+    float x = cloud->points[i].x;
+    float y = cloud->points[i].y;
+    float z = cloud->points[i].z;
+
+    float residue = fabs (A*x + B*y + C*z + D);
+    if ( residue < param.plane_fit_threshold) {
+      plane_pts.push_back (i);
+    }
+    else {
+      non_plane_pts.push_back (i);
+    }
+  }
 }
 
 void Extended4PCS::select3Points (CloudPtr cloud, int& a, int& b, int& c)

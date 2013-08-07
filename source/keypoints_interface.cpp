@@ -92,7 +92,6 @@ void KeyPointsInterface::computeHarris ()
 
 void KeyPointsInterface::computeISS ()
 { 
-
   cout << "Computing ISS points ...\n";
   KdTreePtr tree (new KdTree);
 
@@ -101,15 +100,18 @@ void KeyPointsInterface::computeISS ()
   ISSKeypointParams& par = *( (ISSKeypointParams*) keypoint_par.get () );
 
   iss_detector.setSearchMethod (tree);
+  //iss_detector.setNonMaximaSupression (false);
   iss_detector.setSalientRadius (6 * par.model_resolution);
-  iss_detector.setNonMaxRadius (4 * par.model_resolution);
+  //iss_detector.setNonMaxRadius (4 * par.model_resolution);
+  iss_detector.setNonMaxRadius (0.1);
   iss_detector.setThreshold21 (par.ratio_21);
   iss_detector.setThreshold32 (par.ratio_32);
   iss_detector.setMinNeighbors (par.min_neighbours);
+  iss_detector.setBorderRadius (3 * par.model_resolution);
+  iss_detector.setNormalRadius (3 * par.model_resolution);
   iss_detector.setNumberOfThreads (4);
   iss_detector.setInputCloud (cloud);
   iss_detector.compute (*keypoints);
-
 }
 
 

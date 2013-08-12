@@ -46,7 +46,10 @@ add_executable (downsample downsample.cpp io.cpp io.h)
 add_executable (visualize_output visualize_output.cpp io.cpp typedefs.h io.h)
 add_executable (generate_transformation_matrix generate_transformation_matrix.cpp)
 add_executable (transform_cloud transform_cloud.cpp io.cpp typedefs.h io.h)
-add_executable (test_roughness_measure test_roughness_measure.cpp roughness_measure.cpp roughness_measure.h io.cpp io.h)
+add_executable (test_roughness_measure test_roughness_measure.cpp roughness_measure.cpp roughness_measure.h io.cpp io.h
+    typedefs.h)
+add_executable (test_partial_overlap test_partial_overlap.cpp partial_overlap.cpp partial_overlap.h io.cpp io.h
+    typedefs.h)
 
 target_link_libraries (test_e4pcs ${PCL_LIBRARIES})
 target_link_libraries (ndt_test ${PCL_LIBRARIES})
@@ -61,3 +64,4 @@ target_link_libraries (visualize_output ${PCL_LIBRARIES})
 target_link_libraries (generate_transformation_matrix ${PCL_LIBRARIES})
 target_link_libraries (transform_cloud ${PCL_LIBRARIES})
 target_link_libraries (test_roughness_measure ${PCL_LIBRARIES})
+target_link_libraries (test_partial_overlap ${PCL_LIBRARIES})

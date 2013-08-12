@@ -42,6 +42,11 @@ int main (int argc, char *argv[])
   else if (filetype.compare ("pcdbinary") == 0) {
     readPCDBinaryFile (filename.c_str (), cloud);
   }
+  else {
+    cout << "\nUnknown file type provided..\n";
+    cout << "Options (ascii / pcdbinary)\n\n";
+    return -1;
+  }
 
   RoughnessMeasurePtr rm;
 
@@ -54,10 +59,14 @@ int main (int argc, char *argv[])
   else if (method.compare ("EoC") == 0) {
     rm.reset (new RoughnessMeasureEoC ());
   }
+  else {
+    cout << "\nUnknown input roughness measure provided ..\n";
+    cout << "Options (RMS / HoPD / EoC)\n\n";
+    return -1;
+  }
 
   rm->setInputCloud (cloud);
   rm->computeRoughness ();
-
 
   boost::shared_ptr <PCLVisualizer> viz (new PCLVisualizer);
 

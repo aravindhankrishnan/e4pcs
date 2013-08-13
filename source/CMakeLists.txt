@@ -50,6 +50,7 @@ add_executable (test_roughness_measure test_roughness_measure.cpp roughness_meas
     typedefs.h)
 add_executable (test_partial_overlap test_partial_overlap.cpp partial_overlap.cpp partial_overlap.h io.cpp io.h
     typedefs.h)
+add_executable (get_similar_region get_similar_region.cpp io.cpp io.h typedefs.h)
 
 target_link_libraries (test_e4pcs ${PCL_LIBRARIES})
 target_link_libraries (ndt_test ${PCL_LIBRARIES})
@@ -65,3 +66,4 @@ target_link_libraries (generate_transformation_matrix ${PCL_LIBRARIES})
 target_link_libraries (transform_cloud ${PCL_LIBRARIES})
 target_link_libraries (test_roughness_measure ${PCL_LIBRARIES})
 target_link_libraries (test_partial_overlap ${PCL_LIBRARIES})
+target_link_libraries (get_similar_region ${PCL_LIBRARIES})

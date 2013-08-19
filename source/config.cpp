@@ -8,12 +8,8 @@ namespace E4PCS
 
 InputParamsPtr args (new InputParams);
   
-InputParamsPtr getInputParams ()
-{
-  return args;
-}
 
-void readLine (ifstream& ifile, string& line)
+static void readLine (ifstream& ifile, string& line)
 {
     char buff[2048];
     fill_n (buff, 2048, '\0');
@@ -21,7 +17,7 @@ void readLine (ifstream& ifile, string& line)
     line = buff;
 }
 
-void getSIFTParameters (istringstream& istr)
+static void getSIFTParameters (istringstream& istr)
 {
   string keyword;
   string val;
@@ -67,7 +63,70 @@ void getSIFTParameters (istringstream& istr)
   }
 }
 
-void getCurvatureParameters (istringstream& istr)
+static void getPrincipalCurvatureParameters (istringstream& istr)
+{
+  string keyword;
+  string val;
+
+  PrincipalCurvatureParams& par = *((PrincipalCurvatureParams*) args->keypoint_par.get ());
+  par.keypoint_type = "principalcurvatures";
+
+  istr >> keyword >> val;
+  if (keyword.compare ("par_k_search") == 0) {
+    par.k_search = atoi (val.c_str ());
+    cout << "\tPrincipalCurvatures K Search parameter = " << par.k_search << endl;
+  }
+  else {
+    throw std::runtime_error ("PrincipalCurvatures K Search parameter not provided ..");
+  }
+}
+
+static void getCurvatureLocalMaximaParameters (istringstream& istr)
+{
+  string keyword;
+  string val;
+
+  CurvatureLocalMaximaParams& par = *((CurvatureLocalMaximaParams*) args->keypoint_par.get ());
+  par.keypoint_type = "curvaturelocalmaxima";
+
+  istr >> keyword >> val;
+  if (keyword.compare ("par_k_search") == 0) {
+    par.k_search = atoi (val.c_str ());
+    cout << "\tCurvatureLocalMaxima K Search parameter = " << par.k_search << endl;
+  }
+  else {
+    throw std::runtime_error ("CurvatureLocalMaxima K Search parameter not provided ..");
+  }
+}
+
+static void getBoundaryPointsParams (istringstream& istr)
+{
+  string keyword;
+  string val;
+
+  BoundaryPointsParams& par = *((BoundaryPointsParams*) args->keypoint_par.get ());
+  par.keypoint_type = "boundarypoints";
+
+  istr >> keyword >> val;
+  if (keyword.compare ("par_k_search") == 0) {
+    par.k_search = atoi (val.c_str ());
+    cout << "\tBoundaryPoints K Search parameter = " << par.k_search << endl;
+  }
+  else {
+    throw std::runtime_error ("BoundaryPoints K Search parameter not provided ..");
+  }
+
+  istr >> keyword >> val;
+  if (keyword.compare ("border_radius") == 0) {
+    par.border_radius = atof (val.c_str ());
+    cout << "\tBoundaryPoints border_radius parameter = " << par.border_radius << endl;
+  }
+  else {
+    throw std::runtime_error ("BoundaryPoints border radius parameter not provided ..");
+  }
+}
+
+static void getCurvatureParameters (istringstream& istr)
 {
   string keyword;
   string val;
@@ -96,7 +155,7 @@ void getCurvatureParameters (istringstream& istr)
 
 }
 
-void getISSParameters (istringstream& istr)
+static void getISSParameters (istringstream& istr)
 {
   string keyword;
   string val;
@@ -139,6 +198,11 @@ void getISSParameters (istringstream& istr)
   else {
     throw std::runtime_error ("ISS min neighbours not provided ..");
   }
+}
+
+InputParamsPtr getInputParams ()
+{
+  return args;
 }
 
 int loadConfigFile (const char* filename)
@@ -286,6 +350,18 @@ int loadConfigFile (const char* filename)
             args->keypoint_par.reset (new CurvatureKeypointParams);
             getCurvatureParameters (istr);
           }
+          else if (args->keypoint_type.compare ("curvaturelocalmaxima") == 0) {
+            args->keypoint_par.reset (new CurvatureLocalMaximaParams);
+            getCurvatureLocalMaximaParameters (istr);
+          }
+          else if (args->keypoint_type.compare ("principalcurvatures") == 0) {
+            args->keypoint_par.reset (new PrincipalCurvatureParams);
+            getPrincipalCurvatureParameters (istr);
+          }
+          else if (args->keypoint_type.compare ("boundarypoints") == 0) {
+            args->keypoint_par.reset (new BoundaryPointsParams);
+            getBoundaryPointsParams (istr);
+          }
         }
         else {
           throw std::runtime_error ("Sampling type not provided ..");
@@ -407,5 +483,8 @@ int loadConfigFile (const char* filename)
   }
   cout << endl << endl;
 }
+
+
+
 
 }

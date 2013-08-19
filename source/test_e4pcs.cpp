@@ -57,7 +57,7 @@ void sampleCloud (CloudPtr cloud, int N, CloudPtr sampledcloud,
 
 
 void displayPointCloud (PCLVisualizer* viz, CloudPtr cloud, int* color, 
-                        char* name, int& viewport)
+                        char* name, int viewport=0)
 {
   PointCloudColorHandlerCustom <Point> tgt_h (cloud, color[0], color[1], color[2]);
   viz->addPointCloud (cloud, tgt_h, name, viewport);
@@ -373,6 +373,7 @@ int main (int argc, char *argv[])
 
   cout << "# points in cloud 3 = " << op_cloud3->points.size () << endl;
 
+
   int vp0 = 0;
   int color[3] = { 255, 0, 0};
   displayPointCloud (final, op_cloud1, color, (char *) "opcloud1", vp1);
@@ -387,18 +388,43 @@ int main (int argc, char *argv[])
   displayPointCloud (final, op_cloud3, color, (char *) "opcloud12", vp2);
 
 
-  p->spin ();
-  final->spin ();
+  boost::shared_ptr <PCLVisualizer> planepointsviz (new PCLVisualizer (argc, argv, "Plane vs Non Plane"));
+  planepointsviz->setBackgroundColor (113.0/255, 113.0/255, 154.0/255);
+  CloudPtr cloud_plane = e4pcs.getCloudPlane ();
+  CloudPtr cloud_non_plane = e4pcs.getCloudNonPlane ();
+
+  cout << "Plane points = " << cloud_plane->points.size () << "\t";
+  cout << "Non Plane points = " << cloud_non_plane->points.size () << "\n\n";
+
 
   vector <PCLVisualizer*>& V = e4pcs.getVisualizers ();
+
+  cout << "Visualizing pyramid matches ..\n";
+
+
+  cout << "Visualizing keypoints ..\n";
+  boost::shared_ptr <PCLVisualizer> keypointsviz = e4pcs.getKeypointsVisualizer();
+
+
+  color[0] = 255; color[1] = 255; color[2] = 0;
+  //displayPointCloud (planepointsviz.get (), cloud_plane, color, (char *) "plane");
+  PointCloudColorHandlerCustom <Point> tgt_h1 (cloud_plane, color[0], color[1], color[2]);
+  planepointsviz->addPointCloud (cloud_plane, tgt_h1, "plane", 0);
+
+  color[0] = 0; color[1] = 255; color[2] = 255;
+  //displayPointCloud (planepointsviz.get (), cloud_non_plane, color, (char *) "nonplane");
+  PointCloudColorHandlerCustom <Point> tgt_h2 (cloud_non_plane, color[0], color[1], color[2]);
+  planepointsviz->addPointCloud (cloud_non_plane, tgt_h2, "nonplane", 0);
+
+
 
   BOOST_FOREACH (PCLVisualizer* p, V) {
     p->spin ();
   }
-
-  boost::shared_ptr <PCLVisualizer> keypointsviz = e4pcs.getKeypointsVisualizer();
+  planepointsviz->spin ();
+  p->spin ();
+  final->spin ();
   keypointsviz->spin ();
-
   }
   catch (std::exception& e) {
     cout << "\n\nException :: " << e.what () << "\n\n";

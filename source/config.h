@@ -35,9 +35,6 @@ struct InputParams
 
 typedef boost::shared_ptr <InputParams> InputParamsPtr;
 
-void getSIFTParameters (istringstream& istr);
-void getCurvatureParameters (istringstream& istr);
-void getISSParameters (istringstream& istr);
 int loadConfigFile (const char* filename);
 InputParamsPtr getInputParams ();
 

@@ -149,6 +149,9 @@ class Extended4PCS
     CloudPtr sourcefull;
     CloudPtr targetfull;
 
+    CloudPtr cloud_plane;
+    CloudPtr cloud_non_plane;
+
     vector <int> plane_pts;
     vector <int> non_plane_pts;
     vector <Quad> quads;
@@ -203,7 +206,7 @@ class Extended4PCS
         D += offset;
       }
 
-      param.random_tries = 500; // for selecting the plane containing max points
+      param.random_tries = 2500; // for selecting the plane containing max points
 
       // this parameter is constant
       param.angle_threshold = 5.0; // angle threshold at quad intersections
@@ -291,6 +294,10 @@ class Extended4PCS
 
     boost::shared_ptr <PCLVisualizer> getKeypointsVisualizer () { return keypointsviz; }
 
+    CloudPtr getCloudPlane () { return cloud_plane; }
+
+    CloudPtr getCloudNonPlane () { return cloud_non_plane; }
+
   private:
 
     void alignUsingQuads ();
@@ -338,6 +345,9 @@ class Extended4PCS
     void selectOneQuad (Quad& quad, vector <int>& plane_pts);
 
     void selectBase (Pyramid& pyramid, vector <int>& plane_pts);
+
+    void addApex (CloudPtr& cloud, Pyramid& pyramid, 
+                  vector <int>& non_plane_pts);
 
     void addApex (CloudPtr& cloud, Pyramid& pyramid, vector <int>& non_plane_pts,
                   int K);

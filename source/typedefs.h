@@ -9,12 +9,15 @@ namespace E4PCS {
 typedef pcl::PointXYZ Point;
 typedef pcl::PointXYZI PointIntensity;
 typedef pcl::PointNormal PointNormal;
+typedef pcl::PrincipalCurvatures PrincipalCurvatures;
 typedef pcl::PointCloud<Point> Cloud;
 typedef pcl::PointCloud<Point>::Ptr CloudPtr;
 typedef pcl::PointCloud<PointIntensity> CloudIntensity;
 typedef pcl::PointCloud<PointIntensity>::Ptr CloudIntensityPtr;
 typedef pcl::PointCloud<PointNormal> CloudNormal;
 typedef pcl::PointCloud<PointNormal>::Ptr CloudNormalPtr;
+typedef pcl::PointCloud<PrincipalCurvatures> CloudPC;
+typedef pcl::PointCloud<PrincipalCurvatures>::Ptr CloudPCPtr;
 
 //typedef pcl::KdTreeFLANN <Point> KdTree;
 //typedef pcl::KdTreeFLANN <Point>::Ptr KdTreePtr;

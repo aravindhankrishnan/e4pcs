@@ -9,6 +9,8 @@ message ("Binary directory : " ${CMAKE_BINARY_DIR})
 
 find_package(PCL 1.7 REQUIRED)
 
+message ("PCL Libraries: " ${PCL_LIBRARIES})
+
 
 find_package(Boost)
 if (boost_found)
@@ -17,8 +19,8 @@ if (boost_found)
 endif()
 
 set (UTILS_FOLDER /Volumes/WORKSPACE/projects)
-
-include_directories (/usr/local/include/opencv /opt/local/include/eigen3/Eigen/src/ ${UTILS_FOLDER})
+#/usr/local/Cellar/eigen/3.2.0/include/eigen3/
+include_directories (/usr/local/include/opencv /usr/local/Cellar/eigen/3.2.0/include/eigen3 /usr/local/Cellar/eigen/3.2.0/include/eigen3/Eigen/src/ ${UTILS_FOLDER})
 #include_directories (/usr/local/include/opencv ${UTILS_FOLDER})
 include_directories(${PCL_INCLUDE_DIRS} /usr/local/include )
 
@@ -51,6 +53,7 @@ add_executable (test_roughness_measure test_roughness_measure.cpp roughness_meas
 add_executable (test_partial_overlap test_partial_overlap.cpp partial_overlap.cpp partial_overlap.h io.cpp io.h
     typedefs.h)
 add_executable (get_similar_region get_similar_region.cpp io.cpp io.h typedefs.h)
+add_executable (pcd_to_ascii pcd_to_ascii.cpp io.cpp io.h typedefs.h)
 
 target_link_libraries (test_e4pcs ${PCL_LIBRARIES})
 target_link_libraries (ndt_test ${PCL_LIBRARIES})
@@ -67,3 +70,4 @@ target_link_libraries (transform_cloud ${PCL_LIBRARIES})
 target_link_libraries (test_roughness_measure ${PCL_LIBRARIES})
 target_link_libraries (test_partial_overlap ${PCL_LIBRARIES})
 target_link_libraries (get_similar_region ${PCL_LIBRARIES})
+target_link_libraries (pcd_to_ascii ${PCL_LIBRARIES})

@@ -1,6 +1,7 @@
 #include "roughness_measure.h"
 
 #include <iostream>
+#include <numeric>
 using namespace std;
 
 #define foreach BOOST_FOREACH

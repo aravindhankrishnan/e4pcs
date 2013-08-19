@@ -63,7 +63,8 @@ void writePointCloud (CloudPtr cloud, string filename,
 
 void writeASCIIFile (const char* filename, CloudPtr cloud)
 {
-  cout << "Saving file " << filename << " type = ASCII\n\n";
+  cout << "Saving file " << filename << " type = ASCII "
+       << "with " << cloud->points.size () << " points\n\n";
   ofstream ofile (filename);
   for (int i = 0; i < cloud->points.size (); i++) {
     ofile << cloud->points[i].x << " " << cloud->points[i].y << " " << cloud->points[i].z << endl;

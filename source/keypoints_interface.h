@@ -28,6 +28,22 @@ struct CurvatureKeypointParams : public KeypointParams
   int num_points;
 };
 
+struct PrincipalCurvatureParams: public KeypointParams
+{
+  int k_search;
+};
+
+struct CurvatureLocalMaximaParams: public KeypointParams
+{
+  int k_search;
+};
+
+struct BoundaryPointsParams: public KeypointParams
+{
+  int k_search;
+  float border_radius;
+};
+
 struct SIFTKeypointParams : public KeypointParams
 {
   float min_scale;
@@ -85,6 +101,9 @@ class KeyPointsInterface
     void computeSIFT ();
     void computeHarris ();
     void computeCurvatureKeypoint ();
+    void computeCurvatureLocalMaxima ();
+    void computeBoundaryPoints ();
+    void computePrincipalCurvatures ();
     void computeISS ();
 
 

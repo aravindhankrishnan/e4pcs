@@ -61,7 +61,8 @@ int main (int argc, char *argv[])
   sampleCloud (cloud, args->vis_num_points, sampledcloud);
   cout << "# of points displayed = " << sampledcloud->points.size () << endl;
 
-  kpi.setInputCloud (sampledcloud);
+  //kpi.setInputCloud (sampledcloud);
+  kpi.setInputCloud (cloud);
   kpi.compute ();
   
   CloudPtr keypoints (new Cloud);
@@ -75,8 +76,8 @@ int main (int argc, char *argv[])
 
   int color[3] = {255, 255, 255};
   PointCloudColorHandlerCustom <Point> tgt_h1 (cloud, color[0], color[1], color[2]);
-  //viz->addPointCloud (cloud, tgt_h1, "cloud");
-  viz->addPointCloud (sampledcloud, tgt_h1, "cloud");
+  viz->addPointCloud (cloud, tgt_h1, "cloud");
+  //viz->addPointCloud (sampledcloud, tgt_h1, "cloud");
   //viz->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 
   //                                        10, "cloud");
 
@@ -85,6 +86,7 @@ int main (int argc, char *argv[])
   viz->addPointCloud (keypoints, tgt_h2, "keypoints");
   viz->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 
                                           3, "keypoints");
+  writePointCloud (keypoints, "keypoints.asc");
 
   viz->spin ();
 

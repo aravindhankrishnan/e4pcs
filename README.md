@@ -1,4 +1,4 @@
-Contains implementation of the 4PCs algorithm for Global registration.
+Contains implementation of the 4PCS algorithm for Global registration.
 
 'pyramid' branch contains the implementation of the following paper
 
